@@ -9,7 +9,23 @@ import torch.utils.data as data
 from torch.utils.data import Dataset, TensorDataset, WeightedRandomSampler, RandomSampler
 import matplotlib.pyplot as plt 
 import torchvision.transforms as transforms
+import utilities.utils as utils 
 
+def get_percentiles(data):
+    
+    l, r = data.min(), data.max()
+    r = 8
+    num=500
+    
+    n, bins = utils.function_hist(data, l, r, num)
+    
+    cs = np.cumsum(n)
+    
+    loc90 = np.where(cs>0.90*sum(n))[0][0]*(r-l)/num+l
+    loc99 = np.where(cs>0.99*sum(n))[0][0]*(r-l)/num+l
+    
+    return np.round(loc90,1), np.round(loc99,1)
+    
 
 def pchip(points):
     h = np.zeros((len(points)-1))
@@ -63,8 +79,7 @@ def relevance_function(arr,y1,y2,a,b,c,d):
     return rel
     
     
-def relevance(x):
-    y1,y2 = 1.2, 2.7
+def relevance(x, y1, y2):
     points = np.array([[y1,0.,0.],[y2,1.,0.]])
     a,b,c,d = pchip(points)
     rel = relevance_function(x.numpy(),y1,y2,a,b[0],c,d)
@@ -105,32 +120,65 @@ class CustomTensorDataset(Dataset):
     def __len__(self):
         return self.tensors[0].size(0) 
     
+
+def chunkify(data, which=None):
+    num_samples = len(data)
+
+    num_input = 12
+    num_output = 12
+    samples_per_chunk = num_input + num_output 
+
+    from_ = 0
+    to_ = num_samples - samples_per_chunk
+    shift_ = 12 
+
+    chunked_data = []
+    for i in range(from_, to_, shift_):
+        chunked = []
+        if which=='inputs': 
+            for chunk in data[i : i+num_input]:
+                chunked.append(chunk)
+        if which=='targets':
+            for chunk in data[i+num_input : i+num_input+num_output]:
+                chunked.append(chunk)
+        chunked_data.append(chunked)
+        
+    return np.array(chunked_data, dtype=float)   
+
+
     
-def load_era5(root, args, channels, a, b, c):
+def load_era5(root, args, a, b, c):
     # Load ERA5 train, validation and test data. 
     
-    data = np.load(os.path.join(root, 'chunked_inputs.npy'))
-    n = len(data)
+    #root = '../../../../../../mnt/data/scheepensd94dm/data/'
     
-    train_inputs = torch.from_numpy(np.concatenate((data[:int(n*a)], data[int(n*b):int(n*c)]))).float()
-    val_inputs = torch.from_numpy(data[int(n*a):int(n*b)]).float()
-    test_inputs = torch.from_numpy(data[int(n*c):]).float()
-    del data
     
-    targets = np.load(os.path.join(root, 'chunked_targets.npy'))   
+    # get 90th and 99th percentiles from all training and validation data: 
+    data = np.load(os.path.join(root, 'adaptor.mars.internal-Horizontal_velocity_%s.npy'%args.hpa)[:24*365*8])
+    data = utils.standardize_local(data)[0]
+    
+    y1, y2 = get_percentiles(data)
+    print('percentiles:',y1, y2) 
+    
+    #inputs = np.load(os.path.join(root, 'chunked_inputs.npy'))
+    inputs = chunkify(data, which='inputs')
+    n = len(inputs)
+    
+    train_inputs = torch.from_numpy(np.concatenate((inputs[:int(n*a)], inputs[int(n*b):int(n*c)]))).float()
+    val_inputs = torch.from_numpy(inputs[int(n*a):int(n*b)]).float()
+    test_inputs = torch.from_numpy(inputs[int(n*c):]).float()
+    del inputs
+    
+    #targets = np.load(os.path.join(root, 'chunked_targets.npy'))
+    targets = chunkify(data, which='targets')
     train_targets = torch.from_numpy(np.concatenate((targets[:int(n*a)], targets[int(n*b):int(n*c)]))).float()
     val_targets = torch.from_numpy(targets[int(n*a):int(n*b)]).float()
     test_targets = torch.from_numpy(targets[int(n*c):]).float()
     del targets
     
-    train_rels = relevance(train_targets)
-    val_rels = relevance(val_targets)
-    test_rels = relevance(test_targets)    
-    
-    example_inputs = train_inputs[0:args.batch_size]
-    example_targets = train_targets[0:args.batch_size]
-    example_rels = train_rels[0:args.batch_size]
-    
+    train_rels = relevance(train_targets, y1, y2)
+    val_rels = relevance(val_targets, y1, y2)
+    test_rels = relevance(test_targets, y1, y2)    
     
     #transform=transforms.Compose([
     #    transforms.ToTensor(),
@@ -162,7 +210,7 @@ def load_era5(root, args, channels, a, b, c):
                                          shuffle=False, 
                                          drop_last=False)
 
-    return train_loader, valid_loader, test_loader, example_inputs, example_targets, example_rels
+    return train_loader, valid_loader, test_loader
     
     
 def get_storm_data(data):

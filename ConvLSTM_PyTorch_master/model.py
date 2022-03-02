@@ -1,7 +1,7 @@
 from torch import nn
 import torch.nn.functional as F
 import torch
-from utils import make_layers
+from utilities.utils import make_layers
 
 
 class activation():

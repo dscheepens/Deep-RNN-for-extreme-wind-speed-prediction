@@ -2,22 +2,22 @@ import torch
 import numpy as np 
 
 
-def choose_loss(device, preds, targets, categories, relevances, choose=None):
-    if which=='wmae':
-        return weighted_loss(preds, targets, categories, loss='l1')
-    elif which=='wmse':
-        return weighted_loss(preds, targets, categories, loss='l2')
-    elif which=='sera':
+def choose_loss(device, preds, targets, categories, relevances, choose=None, hpa=1000):
+    if choose=='wmae':
+        return weighted_loss(preds, targets, categories, loss='l1', hpa=hpa)
+    elif choose=='wmse':
+        return weighted_loss(preds, targets, categories, loss='l2', hpa=hpa)
+    elif choose=='sera':
         return sera_loss(preds, targets, relevances)
-    elif which=='mae':
-        return standard_loss(device, loss='l1')
-    elif which=='mse':
-        return standard_loss(device, loss='l2')
+    elif choose=='mae':
+        return abs(preds-targets).mean() #standard_loss(device, loss='l1')
+    elif choose=='mse':
+        return ((preds-targets)**2).mean() #standard_loss(device, loss='l2')
     else: 
         raise Exception('choose must be either \'wmae\', \'wmse\', \'sera\', \'mae\', or \'mse\'!')
     
 
-def weighted_loss(preds, targets, categories, loss='l1'):
+def weighted_loss(preds, targets, categories, loss='l1', hpa=1000):
     """
     weighted loss function
     
@@ -25,16 +25,27 @@ def weighted_loss(preds, targets, categories, loss='l1'):
     targets:      Tensor holding targets 
     categories:   Tensor holding the floored values of targets 
     loss:         'l1' for MAE loss and 'l2' for MSE loss
-    """
-    
+    """    
+
     # define weights: 
-    weights = [1.0, 1.0, 1.0, 1.5, 3.5, 12.6, 66.0, 418.3,418.3,418.3,418.3,418.3,418.3,418.3,418.3,418.3,418.3] 
+    if hpa==1000:
+        weights = [1.0, 1.0, 1.0, 2.0, 4.7, 17, 88, 490, 490, 490, 490, 490, 490, 490, 490, 490, 490] 
+    elif hpa==925: 
+        weights = [1.0, 1.0, 1.0, 2.1, 4.8, 16, 92, 550, 550, 550, 550, 550, 550, 550, 550, 550, 550]
+    elif hpa==850: 
+        weights = [1.0, 1.0, 1.0, 2.1, 5.4, 16, 64, 300, 300, 300, 300, 300, 300, 300, 300, 300, 300]
+    elif hpa==775: 
+        weights = [1.0, 1.0, 1.0, 2.1, 5.1, 17, 71, 320, 320, 320, 320, 320, 320, 320, 320, 320, 320] 
+    else: 
+        raise Exception('hpa must be either 1000, 925, 850 or 775!')
+        
     
-    w = torch.cuda.FloatTensor(weights)[cat+3]   
+    
+    w = torch.cuda.FloatTensor(weights)[categories+3]   
     if loss=='l1':
-        return (w *abs(pred - targ)).mean()
+        return (w *abs(preds - targets)).mean()
     elif loss=='l2': 
-        return (w *(pred - targ)**2).mean()
+        return (w *(preds - targets)**2).mean()
     else: 
         raise Exception('loss must be either \'l1\' or \'l2\'!')
 
