@@ -8,9 +8,9 @@ This code has been modified from https://github.com/jhhuang96/ConvLSTM-PyTorch.g
 
 The ConvLSTM has been proposed in the following paper: [Convolutional LSTM Network: A Machine Learning Approach for Precipitation Nowcasting](https://arxiv.org/abs/1506.04214)
 
-## Experiments with ConvLSTM on MovingMNIST
+## Experiments with ConvLSTM
 
-Encoder-decoder structure. Takes in a sequence of 10 movingMNIST fames and attempts to output the remaining frames.
+Encoder-decoder structure. Takes in a sequence of 12 wind speed fames and attempts to output the next 12 frames.
 
 ## Instructions
 
