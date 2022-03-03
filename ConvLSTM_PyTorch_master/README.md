@@ -10,7 +10,7 @@ The ConvLSTM has been proposed in the following paper: [Convolutional LSTM Netwo
 
 ## Experiments with ConvLSTM
 
-Encoder-decoder structure. Takes in a sequence of 12 wind speed fames and attempts to best predict the next 12 frames.
+Encoder-decoder structure. Takes in a sequence of 12 wind speed fames and attempts to best predict the next 12 frames. Other options can be selected as arguments in main.py. 
 
 ## Instructions
 
