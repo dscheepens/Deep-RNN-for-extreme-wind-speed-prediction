@@ -16,7 +16,7 @@ Encoder-decoder structure. Takes in a sequence of 12 wind speed fames and attemp
 
 Requires `Pytorch v1.1` or later (and GPUs)
 
-To run endoder-decoder network for prediction moving-mnist:
+To run the ConvLSTM model:
 
 ```python
 python main.py
