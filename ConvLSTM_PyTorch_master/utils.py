@@ -76,10 +76,9 @@ def chunkify(data, args):
 
     num_input = args.frames_predict
     num_output = args.frames_predict
-    samples_per_chunk = num_input + num_output 
 
     from_ = 0
-    to_ = num_samples - samples_per_chunk
+    to_ = num_samples - num_input - num_output
     shift_ = 12 
 
     inputs = []
