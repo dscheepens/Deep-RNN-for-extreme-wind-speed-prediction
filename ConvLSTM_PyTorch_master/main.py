@@ -18,8 +18,8 @@ from tqdm import tqdm
 import numpy as np
 from tensorboardX import SummaryWriter
 import argparse
-import utilities.utils as utils 
-import utilities.loss_functions as loss_functions
+import utils 
+import loss_functions
 import matplotlib.pyplot as plt 
 from ConvCNN import CNNModel
 import time 
@@ -30,12 +30,14 @@ data_root = root + 'data/'
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--model', default='convlstm', help='convlstm, convgru or convcnn')
+parser.add_argument('--num_layers', default=3, help='2, 3, 4 or 5')
 parser.add_argument('--frames_predict',default=12,type=int,help='sum of predict frames')
 parser.add_argument('--device',default='cpu')
-parser.add_argument('--loss',default='wmae', help='wmae, wmse, sera, mae or mse')
 parser.add_argument('--hpa',default=1000, help='1000, 925, 850 or 775')
+parser.add_argument('--y1',default=None, help='90th percentile')
+parser.add_argument('--y2',default=None, help='99th percentile')
 # training/optimization related:
-parser.add_argument('--batch_size', default=8, type=int, help='mini-batch size')
+parser.add_argument('--batch_size', default=16, type=int, help='mini-batch size')
 parser.add_argument('--lr', default=1e-3, type=float, help='learning rate')
 parser.add_argument('--lam', default=1., type=float, help='lambda')
 parser.add_argument('--momentum', default=0.5, type=float, help='momentum')
@@ -67,9 +69,9 @@ else:
     torch.cuda.manual_seed(random_seed)
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
- 
-    
-def train(STAMP, a=0.6, b=0.8):
+
+   
+def train(STAMP, args, a=0.6, b=0.8):
     '''
     main function to run the training
     
@@ -80,25 +82,26 @@ def train(STAMP, a=0.6, b=0.8):
     save_dir = root + 'save_model/' + STAMP
     run_dir = root + 'runs/' + STAMP
     
-    print(args.model, 'with', args.loss, 'loss at', args.hpa, 'hpa.')
+    print(args.model, 'with', args.loss, 'loss at', args.hpa, 'hpa')
     print('device:', args.device)
     print('STAMP: ', STAMP)
+    print('batch size:', args.batch_size)
     print('epochs:', args.epochs)
     
     trainLoader, validLoader, testLoader = load_era5(root=data_root, args=args, a=a, b=b, c=0.8)
     
     if args.model == 'convlstm':
-        encoder_params = convlstm_encoder_params
-        decoder_params = convlstm_decoder_params
+        encoder_params = convlstm_encoder_params(args.num_layers, input_len=args.frames_predict)
+        decoder_params = convlstm_decoder_params(args.num_layers, output_len=args.frames_predict)
     elif args.model == 'convgru':
-        encoder_params = convgru_encoder_params
-        decoder_params = convgru_decoder_params 
+        encoder_params = convgru_encoder_params(args.num_layers, input_len=args.frames_predict)
+        decoder_params = convgru_decoder_params(args.num_layers, output_len=args.frames_predict)
      
     if args.model=='convcnn':
         net = CNNModel()
     else: 
         encoder = Encoder(encoder_params[0], encoder_params[1]).to(device)
-        decoder = Decoder(decoder_params[0], decoder_params[1]).to(device)
+        decoder = Decoder(decoder_params[0], decoder_params[1], args.num_layers).to(device)
         net = ED(encoder, decoder)
 
     if not os.path.isdir(run_dir):
@@ -131,12 +134,13 @@ def train(STAMP, a=0.6, b=0.8):
         print('Number of parameters: %s.\n'%utils.count_parameters(net), file=f)
         print(net, file=f)
 
+            
     optimizer = optim.Adam(net.parameters(), lr=args.lr)
     
-    pla_lr_scheduler = lr_scheduler.ReduceLROnPlateau(optimizer,
-                                                      factor=0.5,
-                                                      patience=4,
-                                                      verbose=True)
+    #pla_lr_scheduler = lr_scheduler.ReduceLROnPlateau(optimizer,
+    #                                                  factor=0.5,
+    #                                                  patience=4,
+    #                                                  verbose=True)
     
     # to track the training loss as the model trains
     train_losses = []
@@ -165,7 +169,7 @@ def train(STAMP, a=0.6, b=0.8):
             pred = net(inputs.unsqueeze(2)).squeeze()
             
             loss = loss_functions.choose_loss(device, pred, targets, cats, rels, choose=args.loss, hpa=args.hpa).requires_grad_()
-            
+                        
             loss_aver = loss.item() / args.batch_size
             train_losses.append(loss_aver)
             loss.backward()
@@ -193,7 +197,7 @@ def train(STAMP, a=0.6, b=0.8):
                 pred = net(inputs.unsqueeze(2)).squeeze()
                 
                 loss = loss_functions.choose_loss(device, pred, targets, cats, rels, choose=args.loss, hpa=args.hpa)
-                
+               
                 loss_aver = loss.item() / args.batch_size
                 # record validation loss
                 valid_losses.append(loss_aver)
@@ -239,28 +243,21 @@ def train(STAMP, a=0.6, b=0.8):
     np.save(save_dir + "/avg_valid_losses.npy", avg_valid_losses)
     return 
 
+
 if __name__ == "__main__":
-    
-    #cnn_regr60 ... 3-layered W-MAE 
-    #cnn_regr61 ... 3-layared W-MSE
-    #cnn_regr62 ... 4-layered W-MAE
-    #cnn_regr63 ... 5-layered W-MAE 
-    #cnn_regr72 ... 2-layered W-MAE 
-    #cnn_regr73 ... 3-layered SERA
-    #cnn_regr74 ... 3-layared MSE
-    #cnn_regr75 ... 3-layared MAE 
      
+    args.batch_size = 16    
     args.hpa = 1000
-    layers = 3
-    
-    for loss_name in ['wmae','wmse']:
-        model_name = loss_name+'_%s_%s'%(layers, args.hpa)
+    args.num_layers = 3
+
+    for loss_name in ['sera']:
+        model_name = loss_name+'_%s_%s'%(args.num_layers, args.hpa)
         args.loss = loss_name
         for STAMP, a, b in [[model_name+'/cv0', 0.6, 0.8],
                             [model_name+'/cv1', 0.4, 0.6], 
                             [model_name+'/cv2', 0.2, 0.4],
                             [model_name+'/cv3', 0.0, 0.2]]:
-            train(STAMP, a, b)
+            train(STAMP, args, a, b)
 
     
 

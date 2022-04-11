@@ -10,7 +10,7 @@
 '''
 
 from torch import nn
-from utilities.utils import make_layers
+from utils import make_layers
 import torch
 import logging
 

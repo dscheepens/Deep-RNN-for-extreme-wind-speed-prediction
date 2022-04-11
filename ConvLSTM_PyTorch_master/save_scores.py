@@ -6,23 +6,23 @@ import numpy as np
 import argparse
 from pylab import *
 
+import utils 
+from data_loader import load_era5
 from encoder import Encoder
 from decoder import Decoder
 from model import ED
 from net_params import convlstm_encoder_params, convlstm_decoder_params, convgru_encoder_params, convgru_decoder_params
-from utilities import utils 
-from data_loader import load_era5
+
 
 class args():
     def __init__(self):
         self.frames_predict=12
-        self.batch_size=8
-        self.num_layers=3
+        self.batch_size=4
+        self.num_layers=2
         self.hpa=1000 
         
         
 def get_percentiles(data):
-    
     l, r = data.min(), data.max()
     r = 8
     num=500
@@ -40,30 +40,93 @@ def get_percentiles(data):
     
     return p50, p75, p90, p95, p99, p999 
 
+def save_persistence_scores(args):
+    root = '../../../../../../mnt/data/scheepensd94dm/'
+    
+    data = np.load(os.path.join(root, 'data/adaptor.mars.internal-Horizontal_velocity_%s.npy'%args.hpa))[:24*365*10]
+    data = utils.standardize_local(data)[0]
+    
+    utils.chunkify(root, data, args) 
+    
+    percentiles = get_percentiles(data[:24*365*8]) # don't use test data to compute percentiles 
+    print('percentiles:',percentiles)
+    del data 
+    
+    scales = [(1,1),(3,3),(5,5),(7,7),(9,9)]
+    thresholds = percentiles
+
+    for cv in range(0,4):  
+        print('cv_%s'%cv)
+        a, b = [[0.6, 0.8],[0.4, 0.6],[0.2, 0.4],[0.0, 0.2]][cv]
+        
+        encoder_params = convlstm_encoder_params(args.num_layers, input_len=args.frames_predict)
+        decoder_params = convlstm_decoder_params(args.num_layers, output_len=args.frames_predict)
+        encoder = Encoder(encoder_params[0], encoder_params[1]).cuda()
+        decoder = Decoder(decoder_params[0], decoder_params[1], args.num_layers).cuda()
+        net = ED(encoder, decoder)
+        if torch.cuda.device_count() > 1:
+            net = nn.DataParallel(net)
+        net.to(device)
+        model_info = torch.load(os.path.join(root+'save_model/sera_%s_%s/cv%s/'%(args.num_layers, args.hpa, cv), 'checkpoint.pth.tar'))
+        net = ED(encoder, decoder)
+        net.load_state_dict(model_info['state_dict'])
+        net.eval()
+        _, _, test_loader = load_era5(root=root+'data/', args=args, a=a, b=b, c=0.8)
+        inputs, targs, _, _, _, _ = utils.predict_batchwise(test_loader, net, device, report=False)
+        del net, test_loader, _ 
+
+        scores_scales = np.zeros((len(thresholds), len(scales)))
+        scores_times = np.zeros((len(thresholds), len(scales), args.frames_predict))
+
+        for i, threshold in enumerate(thresholds):
+            #print('threshold:',threshold)
+
+            preds = utils.get_persistence_forecast(inputs)
+            preds_random = utils.get_random_forecast(preds>=threshold, targs>=threshold)   
+
+            for j, s in enumerate(scales):
+                #print('scale:',s)
+
+                res_scales, res_times = utils.minimum_coverage(preds, preds_random, targs, args, 
+                                                    scale=s, threshold=threshold)
+                scores_scales[i,j] = res_scales
+                scores_times[i,j,:] = res_times
+
+            np.save(root+'save_scores_random/persist_%s/scores_scales_extended_%s.npy'%(args.hpa, cv), scores_scales)
+            np.save(root+'save_scores_random/persist_%s/scores_times_extended_%s.npy'%(args.hpa, cv), scores_times)
+            
+        del inputs, targs, preds, preds_random 
+    return
+
         
 def save_all_scores(args):
     
     root = '../../../../../../mnt/data/scheepensd94dm/'
     
-    data = np.load(os.path.join(root, 'data/adaptor.mars.internal-Horizontal_velocity_%s.npy'%args.hpa)[:24*365*8])
+    data = np.load(os.path.join(root, 'data/adaptor.mars.internal-Horizontal_velocity_%s.npy'%args.hpa))[:24*365*10]
     data = utils.standardize_local(data)[0]
     
-    percentiles = get_percentiles(data)
+    utils.chunkify(root, data, args) 
+    
+    percentiles = get_percentiles(data[:24*365*8]) # don't use test data to compute percentiles 
     print('percentiles:',percentiles)
+    del data 
     
     scales = [(1,1),(3,3),(5,5),(7,7),(9,9)]
-    thresholds = [percentiles[-2]]
+    thresholds = percentiles
     
-    for loss_name in ['wmae','wmse','sera','mae','mse']:
-        model_name = loss_name + '_' + str(args.num_layers)
+    for loss_name in ['sera']:
+        model_name = loss_name + '_' + str(args.num_layers) + '_' + str(args.hpa)
         print('\nmodel:',model_name,'\t started.')
 
         for cv in range(0,4):   
             print('cv_%s'%cv)
-            encoder_params = convlstm_encoder_params
-            decoder_params = convlstm_decoder_params
+            a, b = [[0.6, 0.8],[0.4, 0.6],[0.2, 0.4],[0.0, 0.2]][cv]
+            
+            encoder_params = convlstm_encoder_params(args.num_layers, input_len=args.frames_predict)
+            decoder_params = convlstm_decoder_params(args.num_layers, output_len=args.frames_predict)
             encoder = Encoder(encoder_params[0], encoder_params[1]).cuda()
-            decoder = Decoder(decoder_params[0], decoder_params[1]).cuda()
+            decoder = Decoder(decoder_params[0], decoder_params[1], args.num_layers).cuda()
             net = ED(encoder, decoder)
             if torch.cuda.device_count() > 1:
                 net = nn.DataParallel(net)
@@ -72,17 +135,18 @@ def save_all_scores(args):
             net = ED(encoder, decoder)
             net.load_state_dict(model_info['state_dict'])
             net.eval()
-            _, _, test_loader = load_era5(root=root+'data/', args=args, a=0.6, b=0.8, c=0.8)
-            _, targs, preds, _, _, _ = utils.predict_batchwise(test_loader, net, device, report=False)
-            del net 
+            _, _, test_loader = load_era5(root=root+'data/', args=args, a=a, b=b, c=0.8)
+            inputs, targs, preds, _, _, _ = utils.predict_batchwise(test_loader, net, device, report=False)
+            del net, test_loader, _
 
             scores_scales = np.zeros((len(thresholds), len(scales)))
             scores_times = np.zeros((len(thresholds), len(scales), args.frames_predict))
 
             for i, threshold in enumerate(thresholds):
                 #print('threshold:',threshold)
-
-                preds_random = utils.get_random_forecast(preds>threshold, targs>threshold)   
+                
+                #preds_random = utils.get_persistence_forecast(inputs>=threshold)
+                preds_random = utils.get_random_forecast(preds>=threshold, targs>=threshold)   
 
                 for j, s in enumerate(scales):
                     #print('scale:',s)
@@ -92,25 +156,31 @@ def save_all_scores(args):
                     scores_scales[i,j] = res_scales
                     scores_times[i,j,:] = res_times
 
-            np.save(root+'saved_scores/%s/scores_scales_%s.npy'%(model_name, cv), scores_scales)
-            np.save(root+'saved_scores/%s/scores_times_%s.npy'%(model_name, cv), scores_times)
-
+            np.save(root+'save_scores_random/%s/scores_scales_extended_%s.npy'%(model_name, cv), scores_scales)
+            np.save(root+'save_scores_random/%s/scores_times_extended_%s.npy'%(model_name, cv), scores_times)
+            
             #print('model:',model_name,cv,'\t finished.')
-            del _, targs, preds, preds_random, test_loader
+            del targs, preds, preds_random
     return 
 
+
+
+    
 
 
 if __name__=='__main__':
     
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-
     print("Use device: ", device)
         
     args = args()
     
-    args.hpa = 1000 
+    args.hpa = 775
     args.num_layers = 3
     
+    #for i in [2,3,4,5]:
+    #    print('layers:', i)
+    #    args.num_layers = i
     save_all_scores(args)
-    
+        
+    #save_persistence_scores(args)
