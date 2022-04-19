@@ -302,11 +302,11 @@ def minimum_coverage(preds, preds_random, targs, args, scale=(1,1), threshold=0,
     #print(counts_random)
     #print('\n')
     
-    counts = get_counts_from_binary_per_time(reduced_preds, reduced_targs, args)
-    counts_random = get_counts_from_binary_per_time(reduced_rands, reduced_targs, args)
-    scores_times = np.array([get_sedi_et(counts[t], counts_random[t]) for t in counts.keys()])
+    #counts = get_counts_from_binary_per_time(reduced_preds, reduced_targs, args)
+    #counts_random = get_counts_from_binary_per_time(reduced_rands, reduced_targs, args)
+    #scores_times = np.array([get_sedi_et(counts[t], counts_random[t]) for t in counts.keys()])
 
-    return scores_scales, scores_times 
+    return scores_scales, scores_scales #scores_times 
    
 
 def fractions_skill_score(pred, targets, scale=(1,1), threshold=None, categorical=False, time_comp=True):

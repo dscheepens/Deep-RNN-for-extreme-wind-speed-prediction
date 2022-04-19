@@ -98,6 +98,64 @@ def save_persistence_scores(args):
         del inputs, targs, preds, preds_random 
     return
 
+
+def save_scores_per_coordinate(args):
+    root = '../../../../../../mnt/data/scheepensd94dm/'
+    
+    data = np.load(os.path.join(root, 'data/adaptor.mars.internal-Horizontal_velocity_%s.npy'%args.hpa))[:24*365*10]
+    data = utils.standardize_local(data)[0]
+    
+    percentiles = get_percentiles(data[:24*365*8]) # don't use test data to compute percentiles 
+    print('percentiles:',percentiles)
+    del data 
+    
+    thresholds = [percentiles[-4], percentiles[-3], percentiles[-2], percentiles[-1]]
+    
+    for loss_name in ['sera']:
+        model_name = loss_name + '_' + str(args.num_layers) + '_' + str(args.hpa)
+        print('\nmodel:',model_name,'\t started.')
+
+        for cv in range(0,4):   
+            print('cv_%s'%cv)
+            a, b = [[0.6, 0.8],[0.4, 0.6],[0.2, 0.4],[0.0, 0.2]][cv]
+            
+            encoder_params = convlstm_encoder_params(args.num_layers, input_len=args.frames_predict)
+            decoder_params = convlstm_decoder_params(args.num_layers, output_len=args.frames_predict)
+            encoder = Encoder(encoder_params[0], encoder_params[1]).cuda()
+            decoder = Decoder(decoder_params[0], decoder_params[1], args.num_layers).cuda()
+            net = ED(encoder, decoder)
+            if torch.cuda.device_count() > 1:
+                net = nn.DataParallel(net)
+            net.to(device)
+            model_info = torch.load(os.path.join(root+'save_model/%s/cv%s/'%(model_name, cv), 'checkpoint.pth.tar'))
+            net = ED(encoder, decoder)
+            net.load_state_dict(model_info['state_dict'])
+            net.eval()
+            _, _, test_loader = load_era5(root=root+'data/', args=args, a=a, b=b, c=0.8)
+            inputs, targs, preds, _, _, _ = utils.predict_batchwise(test_loader, net, device, report=False)
+            print(inputs.shape)
+            del net, test_loader, _
+
+            scores_scales = np.zeros((len(thresholds), 64, 64))
+
+            for i, threshold in enumerate(thresholds):
+                #print('threshold:',threshold)
+                
+                preds_random = utils.get_random_forecast(preds>=threshold, targs>=threshold)   
+
+                for j in range(64):
+                    for k in range(64):
+
+                        res_scales, _ = utils.minimum_coverage(preds[:,:,j,k], preds_random[:,:,j,k], targs[:,:,j,k], args, 
+                                                            scale=(1,1), threshold=threshold)
+                        scores_scales[i,j,k] = res_scales
+
+            np.save(root+'save_scores_random/%s/scores_scales_coordinates_%s.npy'%(model_name, cv), scores_scales)
+            
+            #print('model:',model_name,cv,'\t finished.')
+            del targs, preds, preds_random
+    return 
+
         
 def save_all_scores(args):
     
@@ -175,12 +233,15 @@ if __name__=='__main__':
         
     args = args()
     
-    args.hpa = 775
+    args.hpa = 1000
     args.num_layers = 3
     
     #for i in [2,3,4,5]:
     #    print('layers:', i)
     #    args.num_layers = i
-    save_all_scores(args)
+    for hpa in [1000,925,850,775]: 
+        print('hpa:',hpa) 
+        args.hpa = hpa 
+        save_scores_per_coordinate(args)
         
     #save_persistence_scores(args)
