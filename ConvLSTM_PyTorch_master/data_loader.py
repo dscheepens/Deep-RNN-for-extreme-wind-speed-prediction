@@ -123,8 +123,6 @@ def relevance(x, y1, y2):
 def load_era5(root, args, a, b, c):
     # Load ERA5 train, validation and test data. 
     
-    root = '../../../../../../mnt/data/scheepensd94dm/data/'
-    
     data = np.load(os.path.join(root, 'adaptor.mars.internal-Horizontal_velocity_%s.npy'%args.hpa))[:24*365*args.num_years]
     print('number of years:', len(data)/(24*365))
     data = utils.standardize_local(data)[0]
