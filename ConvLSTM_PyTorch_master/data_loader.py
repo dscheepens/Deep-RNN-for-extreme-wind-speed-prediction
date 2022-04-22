@@ -125,13 +125,11 @@ def load_era5(root, args, a, b, c):
     
     root = '../../../../../../mnt/data/scheepensd94dm/data/'
     
-    num_years = 10
-    
-    data = np.load(os.path.join(root, 'adaptor.mars.internal-Horizontal_velocity_%s.npy'%args.hpa))[:24*365*num_years]
+    data = np.load(os.path.join(root, 'adaptor.mars.internal-Horizontal_velocity_%s.npy'%args.hpa))[:24*365*args.num_years]
     print('number of years:', len(data)/(24*365))
     data = utils.standardize_local(data)[0]
     
-    y1, y2 = get_percentiles(data[:24*365*int(c*num_years)]) # don't use test data 
+    y1, y2 = get_percentiles(data[:24*365*int(c*args.num_years)]) # don't use test data 
     print('percentiles:', y1, y2) 
     
     inputs, targets = utils.chunkify(data, args) 

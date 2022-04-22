@@ -31,6 +31,7 @@ data_root = root + 'data/'
 parser = argparse.ArgumentParser()
 parser.add_argument('--model', default='convlstm', help='convlstm, convgru or convcnn')
 parser.add_argument('--num_layers', default=3, help='2, 3, 4 or 5')
+parser.add_argument('--num_years', default=10, help='number of years of wind speed data')
 parser.add_argument('--frames_predict',default=12,type=int,help='sum of predict frames')
 parser.add_argument('--device',default='cpu')
 parser.add_argument('--hpa',default=1000, help='1000, 925, 850 or 775')
