@@ -8,9 +8,7 @@ import pygrib
 # Files were renamed: adaptor.mars.internal-U-component_[insert hPa here].grib
 
 
-root = '../../../../../mnt/data/scheepensd94dm/data/'
-
-for hpa in [1000, 925, 850, 775]:
+def grib_to_numpy(root, hpa): 
     arr = [] 
     
     # Merge U and V velocities
@@ -22,3 +20,13 @@ for hpa in [1000, 925, 850, 775]:
         arr.append(values)
         
     np.save(root+'adaptor.mars.internal-Horizontal_velocity_%s.npy'%hpa, np.array(arr))
+    return 
+    
+
+if __name__ == "__main__":
+
+    root = '../../../../../mnt/data/scheepensd94dm/data/'
+
+    for hpa in [1000, 925, 850, 775]:
+        grib_to_numpy(root, hpa)
+    
