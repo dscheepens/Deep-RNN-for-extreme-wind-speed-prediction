@@ -1,7 +1,7 @@
 # Deep-RNN-for-extreme-wind-speed-prediction
 Paper code for "A deep convolutional RNN model for spatio-temporal prediction of wind speed extremes in the short-to-medium range for wind energy applications"
 
-Model and training can be found in \ConvLSTM_PyTorch_master, example model output can be found in \example_output.
+Model and training code can be found in \ConvLSTM_PyTorch_master. Example model output can be found in \example_output.
 
 
 ## Data 
