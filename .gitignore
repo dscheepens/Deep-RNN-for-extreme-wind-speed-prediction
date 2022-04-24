@@ -1,6 +1,0 @@
-data_preprocessing.py 
-ConvLSTM_PyTorch_master/*.ipynb
-.ipynb_checkpoints/
-__pycache__/
-ConvLSTM_PyTorch_master/save_scores.py
-.gitignore
