@@ -23,6 +23,8 @@ import loss_functions
 import matplotlib.pyplot as plt 
 from ConvCNN import CNNModel
 import time 
+import pickle 
+import gc
 #torch.backends.cudnn.enabled = False
 
 root = '../../../../../../mnt/data/scheepensd94dm/'
@@ -31,12 +33,16 @@ data_root = root + 'data/'
 parser = argparse.ArgumentParser()
 parser.add_argument('--model', default='convlstm', help='convlstm, convgru or convcnn')
 parser.add_argument('--num_layers', default=3, help='2, 3, 4 or 5')
-parser.add_argument('--num_years', default=10, help='number of years of wind speed data')
+parser.add_argument('--num_years', default=42, help='number of years of wind speed data')
+parser.add_argument('--begin_testset', default=40, help='from which year to begin the testset')
 parser.add_argument('--frames_predict',default=12,type=int,help='sum of predict frames')
 parser.add_argument('--device',default='cpu')
 parser.add_argument('--hpa',default=1000, help='1000, 925, 850 or 775')
-parser.add_argument('--y1',default=None, help='90th percentile')
-parser.add_argument('--y2',default=None, help='99th percentile')
+parser.add_argument('--y1',default=None, help='90th percentile, computed automatically')
+parser.add_argument('--y2',default=None, help='99th percentile, computed automatically')
+parser.add_argument('--weights',default=None, help='weights used for the weighted loss, computed automatically')
+parser.add_argument('--offset',default=None, help='offset used by the weighted loss, computed automatically')
+
 # training/optimization related:
 parser.add_argument('--batch_size', default=16, type=int, help='mini-batch size')
 parser.add_argument('--lr', default=1e-3, type=float, help='learning rate')
@@ -47,10 +53,7 @@ parser.add_argument('--epochs', default=200, type=int, help='sum of epochs')
 args = parser.parse_args()
 
 args.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-device = args.device
-
-args.model = 'convlstm'
-args.epochs = 200    
+device = args.device   
 
 if args.model == 'convlstm':
     model_name = 'convlstm.pth'
@@ -60,7 +63,7 @@ elif args.model == 'convcnn':
     model_name = 'convcnn.pth'
 else:
     raise Exception('Model must be either \'convlstm\', \'convgru\' or \'convcnn\'!')
-    
+
 random_seed = 999
 np.random.seed(random_seed)
 torch.manual_seed(random_seed)
@@ -69,10 +72,9 @@ if torch.cuda.device_count() > 1:
 else:
     torch.cuda.manual_seed(random_seed)
 torch.backends.cudnn.deterministic = True
-torch.backends.cudnn.benchmark = False
-
-   
-def train(STAMP, args, a=0.6, b=0.8):
+torch.backends.cudnn.benchmark = False    
+    
+def train(STAMP, args, a, b, c):
     '''
     main function to run the training
     
@@ -80,7 +82,7 @@ def train(STAMP, args, a=0.6, b=0.8):
     Validation set within [a,b] where a and b<=0.8 are percentages of the dataset. Rest is used for training. [0.8,1.0] is reserved for testing.
     '''
 
-    save_dir = root + 'save_model/' + STAMP
+    save_dir = root + 'saved_models/' + STAMP
     run_dir = root + 'runs/' + STAMP
     
     print(args.model, 'with', args.loss, 'loss at', args.hpa, 'hpa')
@@ -89,7 +91,7 @@ def train(STAMP, args, a=0.6, b=0.8):
     print('batch size:', args.batch_size)
     print('epochs:', args.epochs)
     
-    trainLoader, validLoader, testLoader = load_era5(root=data_root, args=args, a=a, b=b, c=0.8)
+    trainLoader, validLoader = load_era5(root=data_root, args=args, a=a, b=b, c=c)
     
     if args.model == 'convlstm':
         encoder_params = convlstm_encoder_params(args.num_layers, input_len=args.frames_predict)
@@ -108,8 +110,6 @@ def train(STAMP, args, a=0.6, b=0.8):
     if not os.path.isdir(run_dir):
         os.makedirs(run_dir)
     tb = SummaryWriter(run_dir)
-    # initialize the early_stopping object
-    early_stopping = EarlyStopping(patience=20, verbose=True)
 
     if torch.cuda.device_count() > 1:
         net = nn.DataParallel(net)
@@ -120,13 +120,24 @@ def train(STAMP, args, a=0.6, b=0.8):
         print('==> loading existing model')
         model_info = torch.load(os.path.join(save_dir, 'checkpoint.pth.tar'))
         net.load_state_dict(model_info['state_dict'])
-        optimizer = torch.optim.Adam(net.parameters())
+        optimizer = torch.optim.Adam(net.parameters(), lr=args.lr)
         optimizer.load_state_dict(model_info['optimizer'])
         cur_epoch = model_info['epoch'] + 1
+        early_stopping = pickle.load(open(os.path.join(save_dir,"early_stopping.p"),"rb"))
+        early_stopping.counter = 0
+        avg_train_losses = pickle.load(open(os.path.join(save_dir,"avg_train_losses.p"),"rb"))
+        avg_valid_losses = pickle.load(open(os.path.join(save_dir,"avg_valid_losses.p"),"rb"))
+        print(avg_valid_losses)
     else:
         if not os.path.isdir(save_dir):
             os.makedirs(save_dir)
         cur_epoch = 0   
+        # initialize the early_stopping object
+        early_stopping = EarlyStopping(patience=20, verbose=True)
+        # to track the average training loss per epoch as the model trains
+        avg_train_losses = []
+        # to track the average validation loss per epoch as the model trains
+        avg_valid_losses = []
         
     print('Number of parameters: %s M.\n'%(utils.count_parameters(net)/1e6))
     
@@ -147,29 +158,25 @@ def train(STAMP, args, a=0.6, b=0.8):
     train_losses = []
     # to track the validation loss as the model trains
     valid_losses = []
-    # to track the average training loss per epoch as the model trains
-    avg_train_losses = []
-    # to track the average validation loss per epoch as the model trains
-    avg_valid_losses = []
-    # mini_val_loss = np.inf
-    train_accuracies = []
-    valid_accuracies = [] 
+    
     for epoch in range(cur_epoch, args.epochs + 1):
         ###################
         # train the model #
         ###################
         t = tqdm(trainLoader, leave=False, total=len(trainLoader))
-        for i, (inputVar, targetVar, relVar) in enumerate(t):
+        for i, (inputVar, targetVar, xVar) in enumerate(t):
             inputs = inputVar.to(device)  
             targets = targetVar.to(device)  
-            rels = relVar.to(device)
-            cats = np.floor(targetVar).long().to(device)
+            if args.loss in ['sera', 'wmae', 'wmse']:
+                x = xVar.to(device)
+            else: 
+                x = None 
             
             optimizer.zero_grad()
             net.train()
             pred = net(inputs.unsqueeze(2)).squeeze()
             
-            loss = loss_functions.choose_loss(device, pred, targets, cats, rels, choose=args.loss, hpa=args.hpa).requires_grad_()
+            loss = loss_functions.choose_loss(device, pred, targets, x, args).requires_grad_()
                         
             loss_aver = loss.item() / args.batch_size
             train_losses.append(loss_aver)
@@ -187,17 +194,19 @@ def train(STAMP, args, a=0.6, b=0.8):
         with torch.no_grad():
             net.eval()
             t = tqdm(validLoader, leave=False, total=len(validLoader))
-            for i, (inputVar, targetVar, relVar) in enumerate(t):
+            for i, (inputVar, targetVar, xVar) in enumerate(t):
                 #if i == 3000:
                 #    break
                 inputs = inputVar.to(device)
                 targets = targetVar.to(device)
-                rels = relVar.to(device)
-                cats = np.floor(targetVar).long().to(device)
+                if args.loss in ['sera', 'wmae', 'wmse']:
+                    x = xVar.to(device)
+                else: 
+                    x = None 
               
                 pred = net(inputs.unsqueeze(2)).squeeze()
                 
-                loss = loss_functions.choose_loss(device, pred, targets, cats, rels, choose=args.loss, hpa=args.hpa)
+                loss = loss_functions.choose_loss(device, pred, targets, x, args)
                
                 loss_aver = loss.item() / args.batch_size
                 # record validation loss
@@ -216,7 +225,7 @@ def train(STAMP, args, a=0.6, b=0.8):
         valid_loss = np.average(valid_losses)
         avg_train_losses.append(train_loss)
         avg_valid_losses.append(valid_loss)
-
+                    
         epoch_len = len(str(args.epochs))
 
         print_msg = (f'[{epoch:>{epoch_len}}/{args.epochs:>{epoch_len}}] ' +
@@ -224,8 +233,9 @@ def train(STAMP, args, a=0.6, b=0.8):
                      f'valid_loss: {valid_loss:.3f}   ')# + 
                      #f'train_acc: {train_acc:.3f} ' +
                      #f'valid_acc: {valid_acc:.3f}')
-
-        print(print_msg)
+        
+        print(print_msg)        
+        
         # clear lists to track next epoch
         train_losses = []
         valid_losses = []
@@ -236,31 +246,48 @@ def train(STAMP, args, a=0.6, b=0.8):
             'optimizer': optimizer.state_dict()
         }
         early_stopping(valid_loss.item(), model_dict, epoch, save_dir)
+        
+        pickle.dump(early_stopping, open(os.path.join(save_dir,"early_stopping.p"),"wb"))
+        pickle.dump(avg_train_losses, open(os.path.join(save_dir,"avg_train_losses.p"),"wb"))
+        pickle.dump(avg_valid_losses, open(os.path.join(save_dir,"avg_valid_losses.p"),"wb"))
+        
         if early_stopping.early_stop:
             print("Early stopping")
             break
-
-    np.save(save_dir + "/avg_train_losses.npy", avg_train_losses)
-    np.save(save_dir + "/avg_valid_losses.npy", avg_valid_losses)
+            
+    del trainLoader, validLoader, net
+    gc.collect()
     return 
 
 
 if __name__ == "__main__":
      
-    args.batch_size = 16    
+    args.model = 'convlstm'
+    args.epochs = 100 
+    args.batch_size = 16
     args.hpa = 1000
-    args.num_layers = 3
-
-    for loss_name in ['sera']:
-        model_name = loss_name+'_%s_%s'%(args.num_layers, args.hpa)
-        args.loss = loss_name
-        for STAMP, a, b in [[model_name+'/cv0', 0.6, 0.8],
-                            [model_name+'/cv1', 0.4, 0.6], 
-                            [model_name+'/cv2', 0.2, 0.4],
-                            [model_name+'/cv3', 0.0, 0.2]]:
-            train(STAMP, args, a, b)
-
     
+    args.loss = 'sera'
+    args.num_layers = 5 
+    
+    model_name = '%s_%s_%s_40years_2'%(args.loss, args.num_layers, args.hpa)
+    train(model_name, args, a=0.75, b=1.0, c=args.begin_testset)
+    
+#     for loss_name, num_layers in [['wmae',5],['wmse',5],['sera',5],['mse',5],['mae',4]]:
+#         gc.collect()
+#         args.loss = loss_name
+#         args.num_layers = num_layers
+
+#         model_name = loss_name+'_%s_%s_extended'%(args.num_layers, args.hpa)
+#         train(model_name, args, a=0.75, b=1.0, c=args.begin_testset)
+        
+        #train(model_name+'/cv0', args, a=0.75, b=1.0, c=args.begin_testset)
+        #train(model_name+'/cv1', args, a=0.50, b=0.75, c=args.begin_testset) 
+        #train(model_name+'/cv2', args, a=0.25, b=0.50, c=args.begin_testset)
+        #train(model_name+'/cv3', args, a=0, b=0.25, c=args.begin_testset)
+
+
+
 
     
     

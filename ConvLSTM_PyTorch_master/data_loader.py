@@ -9,20 +9,12 @@ import matplotlib.pyplot as plt
 #import torchvision.transforms as transforms
 import utils
 
-def get_percentiles(data):
-    
-    l, r = data.min(), data.max()
-    r = 8
-    num=500
-    
-    n, bins = utils.function_hist(data, l, r, num)
-    
-    cs = np.cumsum(n)
-    
-    loc90 = np.where(cs>0.90*sum(n))[0][0]*(r-l)/num+l
-    loc99 = np.where(cs>0.99*sum(n))[0][0]*(r-l)/num+l
-    
-    return np.round(loc90,1), np.round(loc99,1)
+
+def get_sera_percentiles(data):
+    percentiles = []
+    for p in [90,99]:
+        percentiles.append(np.percentile(data,p))
+    return np.array(percentiles)
     
 
 def pchip(points):
@@ -77,77 +69,170 @@ def relevance_function(arr,y1,y2,a,b,c,d):
     return rel
     
     
-def relevance(x, y1, y2):
+def calc_relevance(data):
+    y1, y2 = get_sera_percentiles(data)
+    print('y1, y2:',np.round(y1,2),np.round(y2,2))
     points = np.array([[y1,0.,0.],[y2,1.,0.]])
     a,b,c,d = pchip(points)
-    rel = relevance_function(x.numpy(),y1,y2,a,b[0],c,d)
-    return torch.from_numpy(rel).float()
+    rel = relevance_function(data,y1,y2,a,b[0],c,d)
+    return rel #torch.from_numpy(rel).float()
 
 
-# class AddGaussianNoise(object):
-#     def __init__(self, mean=0., std=1.):
-#         self.std = std
-#         self.mean = mean
-        
-#     def __call__(self, tensor):
-#         return tensor + torch.randn(tensor.size()) * self.std + self.mean
+def calc_relevance_local_percentiles(data):
+    relevances = np.zeros(data.shape)
+    for i in range(64):
+        for j in range(64):                 
+            y1, y2 = get_sera_percentiles(data[:,i,j])
+            #print('y1, y2:',np.round(y1,2),np.round(y2,2))
+            points = np.array([[y1,0.,0.],[y2,1.,0.]])
+            a,b,c,d = pchip(points)
+            relevances[:,i,j] = relevance_function(data[:,i,j],y1,y2,a,b[0],c,d)
+            
+    return relevances #torch.from_numpy(rel).float()
+
+
+def calc_weights(data, args):
+    l, r = int(np.floor(data.min())), int(np.floor(data.max()+1))
+    n, bins = utils.function_hist(data, l, r, r+1-l)
+
+    props = []
+    props.append(sum(n[:abs(l)])/sum(n))
+
+    count = abs(l)
+    end = (abs(l)+r)
+    while count < end: 
+        props.append(n[count]/sum(n))
+        if count==abs(l)+3: 
+            props.append(sum(n[abs(l)+4:])/sum(n))
+            break
+        count+=1
+
+    inverse = 1/np.array(props)
+    weights = [float('%.2g' %(i/min(inverse))) for i in inverse]
+    print('weights:',weights)
+    args.weights = [weights[0] for i in range(abs(l)-1)] + weights + [weights[-1] for i in range(10)]
+    args.offset = abs(l)
+    return 
     
-#     def __repr__(self):
-#         return self.__class__.__name__ + '(mean={0}, std={1})'.format(self.mean, self.std)
+    
+def calc_weights_local_percentiles(data):
+    
+    def get_percentiles(data):
+        percentiles = []
+        for p in np.arange(50,100): #[50,75,90,91,92,93,94,95,96,97,98,99,99.1,99.2,99.3,99.4,99.5,99.6,99.7,99.8,99.9]:
+            percentiles.append(np.percentile(data,p))
+        return np.array(percentiles)
+    
+    weights = 50/np.arange(50,0,-1)
+    weights/=weights[0]
+    #print('weights:',weights)
+    
+    all_weights = np.zeros(data.shape)
+    for i in range(64):
+        for j in range(64):
+
+            percentiles = get_percentiles(data[:,i,j])
+            percentiles = np.append(percentiles, percentiles[-1]+100)
+
+            cats = np.zeros(data[:,i,j].shape, dtype=int)
+            for k in range(len(percentiles)-1):
+                indices = np.where( (data[:,i,j]>=percentiles[k]) & (data[:,i,j]<percentiles[k+1]) )
+                cats[indices] = k
+
+            all_weights[:,i,j] = weights[cats]           
+    return all_weights 
+
 
     
-# class CustomTensorDataset(Dataset):
-#     """TensorDataset with support of transforms.
-#     """
-#     def __init__(self, tensors, transform=None):
-#         assert all(tensors[0].size(0) == tensor.size(0) for tensor in tensors)
-#         self.tensors = tensors
-#         self.transform = transform
-
-#     def __getitem__(self, index):
-#         x = self.tensors[0][index]
-
-#         if self.transform:
-#             x = self.transform(x)
-
-#         y = self.tensors[1][index]
-#         r = self.tensors[2][index]
-
-#         return x, y, r
-
-#     def __len__(self):
-#         return self.tensors[0].size(0)  
-
-
-    
-def load_era5(root, args, a, b, c):
+def load_era5(root, args, a, b, c, training=True):
     # Load ERA5 train, validation and test data. 
-    
-    data = np.load(os.path.join(root, 'adaptor.mars.internal-Horizontal_velocity_%s.npy'%args.hpa))[:24*365*args.num_years]
+
+    data = np.load(root+'era5_standardised.npy')
     print('number of years:', len(data)/(24*365))
-    data = utils.standardize_local(data)[0]
-    
-    y1, y2 = get_percentiles(data[:24*365*int(c*args.num_years)]) # don't use test data 
-    print('percentiles:', y1, y2) 
-    
-    inputs, targets = utils.chunkify(data, args) 
-    del data 
+       
+    if training:   
         
-    n = len(inputs)
+        #data = data[24*365*(c-8):24*365*c] # don't use test data
+        data = data[:24*365*c] # don't use test data
+        print('number of training/validation years:', len(data)/(24*365))
+        
+        inputs, targets = utils.chunkify(data, args) 
+        n = len(inputs)
+
+        if args.loss == 'sera':
+            #relevances = calc_relevance(data) 
+            x = calc_relevance_local_percentiles(data) 
+            print('relevances computed.')
+            _, x = utils.chunkify(x, args)  
+        elif args.loss in ['wmae', 'wmse']: 
+            #calc_weights(data, args)
+            x = calc_weights_local_percentiles(data)
+            print('weights computed.')
+            _, x = utils.chunkify(x, args)  
+        del data 
+       
+        train_inputs = torch.FloatTensor(inputs[:int(n*a)]+inputs[int(n*b):])
+        val_inputs = torch.FloatTensor(inputs[int(n*a):int(n*b)])
+        #train_inputs = torch.from_numpy(np.concatenate((inputs[:int(n*a)], inputs[int(n*b):]))).float()
+        #val_inputs = torch.from_numpy(inputs[int(n*a):int(n*b)]).float()
+        del inputs
+        
+        train_targets = torch.FloatTensor(targets[:int(n*a)]+targets[int(n*b):])
+        val_targets = torch.FloatTensor(targets[int(n*a):int(n*b)])
+        #train_targets = torch.from_numpy(np.concatenate((targets[:int(n*a)], targets[int(n*b):]))).float()
+        #val_targets = torch.from_numpy(targets[int(n*a):int(n*b)]).float()
+        del targets
+           
+        if args.loss not in ['mae','mse']: 
+            train_x = torch.FloatTensor(x[:int(n*a)]+x[int(n*b):])
+            val_x = torch.FloatTensor(x[int(n*a):int(n*b)])
+            #train_rels = torch.from_numpy(np.concatenate((rels[:int(n*a)], rels[int(n*b):]))).float()
+            #val_rels = torch.from_numpy(rels[int(n*a):int(n*b)]).float()
+            del x 
+            train_dataset = TensorDataset(*(train_inputs, train_targets, train_x))
+            del train_inputs, train_targets, train_x
+            val_dataset = TensorDataset(*(val_inputs, val_targets, val_x))
+            del val_inputs, val_targets, val_x
+        else: 
+            train_dataset = TensorDataset(*(train_inputs, train_targets, train_targets))
+            val_dataset = TensorDataset(*(val_inputs, val_targets, val_targets))
+
+        train_loader = torch.utils.data.DataLoader(train_dataset,
+                                         batch_size=args.batch_size,
+                                         shuffle=True, 
+                                         drop_last=True)
+        valid_loader = torch.utils.data.DataLoader(val_dataset,
+                                         batch_size=args.batch_size,
+                                         shuffle=True, 
+                                         drop_last=True)
+        
+        return train_loader, valid_loader
+        
+    if not training:   
+        
+        data = data[24*365*c:]
+                
+        inputs, targets = utils.chunkify(data, args) 
+        del data     
+        
+        inputs = torch.FloatTensor(inputs)
+        targets = torch.FloatTensor(targets)
+                
+        test_dataset = TensorDataset(*(inputs, targets))
+        del inputs, targets
+        
+        test_loader = torch.utils.data.DataLoader(test_dataset,
+                                         batch_size=args.batch_size,
+                                         shuffle=False, 
+                                         drop_last=False)
+        
+        return test_loader
     
-    train_inputs = torch.from_numpy(np.concatenate((inputs[:int(n*a)], inputs[int(n*b):int(n*c)]))).float()
-    val_inputs = torch.from_numpy(inputs[int(n*a):int(n*b)]).float()
-    test_inputs = torch.from_numpy(inputs[int(n*c):]).float()
-    del inputs
     
-    train_targets = torch.from_numpy(np.concatenate((targets[:int(n*a)], targets[int(n*b):int(n*c)]))).float()
-    val_targets = torch.from_numpy(targets[int(n*a):int(n*b)]).float()
-    test_targets = torch.from_numpy(targets[int(n*c):]).float()
-    del targets 
     
-    train_rels = relevance(train_targets, y1, y2)
-    val_rels = relevance(val_targets, y1, y2)
-    test_rels = relevance(test_targets, y1, y2)    
+    #train_rels = relevance(train_targets, y1, y2)
+    #val_rels = relevance(val_targets, y1, y2)
+    #test_rels = relevance(test_targets, y1, y2)    
     
     #transform=transforms.Compose([
     #    transforms.ToTensor(),
@@ -156,29 +241,14 @@ def load_era5(root, args, a, b, c):
     #train_dataset = CustomTensorDataset(tensors=(train_inputs, train_targets, train_rels), 
     #                                    transform=AddGaussianNoise(0., 0.1))
    
-    train_dataset = TensorDataset(*(train_inputs, train_targets, train_rels))
-    del train_inputs, train_targets, train_rels
-    val_dataset = TensorDataset(*(val_inputs, val_targets, val_rels))
-    del val_inputs, val_targets, val_rels
-    test_dataset = TensorDataset(*(test_inputs, test_targets, test_rels))
-    del test_inputs, test_targets, test_rels
+    
+    
 
     #sampler = WeightedRandomSampler(train_rels+0.01, int(len(train_rels)/2), replacement=False)
     
-    train_loader = torch.utils.data.DataLoader(train_dataset,
-                                         batch_size=args.batch_size,
-                                         shuffle=True, 
-                                         #sampler = sampler, 
-                                         drop_last=False)
-    valid_loader = torch.utils.data.DataLoader(val_dataset,
-                                         batch_size=args.batch_size,
-                                         shuffle=False, 
-                                         drop_last=False)
-    test_loader = torch.utils.data.DataLoader(test_dataset,
-                                         batch_size=args.batch_size,
-                                         shuffle=False, 
-                                         drop_last=False)
+    
+    
 
-    return train_loader, valid_loader, test_loader
+    
 
 

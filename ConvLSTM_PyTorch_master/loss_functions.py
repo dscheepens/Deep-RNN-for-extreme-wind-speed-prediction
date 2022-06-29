@@ -2,50 +2,35 @@ import torch
 import numpy as np 
 
 
-def choose_loss(device, preds, targets, categories, relevances, choose=None, hpa=1000):
-    if choose=='wmae':
-        return weighted_loss(preds, targets, categories, loss='l1', hpa=hpa)
-    elif choose=='wmse':
-        return weighted_loss(preds, targets, categories, loss='l2', hpa=hpa)
-    elif choose=='sera':
-        return sera_loss(preds, targets, relevances)
-    elif choose=='mae':
+def choose_loss(device, preds, targets, x, args):
+    if args.loss=='wmae':
+        return weighted_loss(preds, targets, x, loss='l1')
+    elif args.loss=='wmse':
+        return weighted_loss(preds, targets, x, loss='l2')
+    elif args.loss=='sera':
+        return sera_loss(preds, targets, x)
+    elif args.loss=='mae':
         return abs(preds-targets).mean() #standard_loss(device, loss='l1')
-    elif choose=='mse':
+    elif args.loss=='mse':
         return ((preds-targets)**2).mean() #standard_loss(device, loss='l2')
     else: 
-        raise Exception('choose must be either \'wmae\', \'wmse\', \'sera\', \'mae\', or \'mse\'!')
+        raise Exception('args.loss must be either \'wmae\', \'wmse\', \'sera\', \'mae\', or \'mse\'!')
     
 
-def weighted_loss(preds, targets, categories, loss='l1', hpa=1000):
+def weighted_loss(preds, targets, weights, loss='l1'):
     """
     weighted loss function
     
-    preds:        Tensor holding model predictions 
-    targets:      Tensor holding targets 
-    categories:   Tensor holding the floored values of targets 
+    preds:        Tensor of size (batch_size, frames_predict, 64, 64) holding model predictions 
+    targets:      Tensor of size (batch_size, frames_predict, 64, 64) holding targets 
+    weights:      Tensor of size (batch_size, frames_predict, 64, 64) holding weights as computed by the data loader
     loss:         'l1' for MAE loss and 'l2' for MSE loss
-    """    
-
-    # define weights: 
-    if hpa==1000:
-        weights = [1.0, 1.0, 1.0, 2.0, 4.7, 17, 88, 490, 490, 490, 490, 490, 490, 490, 490, 490, 490] 
-    elif hpa==925: 
-        weights = [1.0, 1.0, 1.0, 2.1, 4.8, 16, 92, 550, 550, 550, 550, 550, 550, 550, 550, 550, 550]
-    elif hpa==850: 
-        weights = [1.0, 1.0, 1.0, 2.1, 5.4, 16, 64, 300, 300, 300, 300, 300, 300, 300, 300, 300, 300]
-    elif hpa==775: 
-        weights = [1.0, 1.0, 1.0, 2.1, 5.1, 17, 71, 320, 320, 320, 320, 320, 320, 320, 320, 320, 320] 
-    else: 
-        raise Exception('hpa must be either 1000, 925, 850 or 775!')
-        
+    """            
     
-    
-    w = torch.cuda.FloatTensor(weights)[categories+3]   
     if loss=='l1':
-        return (w *abs(preds - targets)).mean()
+        return (weights *abs(preds - targets)).mean()
     elif loss=='l2': 
-        return (w *(preds - targets)**2).mean()
+        return (weights *(preds - targets)**2).mean()
     else: 
         raise Exception('loss must be either \'l1\' or \'l2\'!')
 
@@ -54,9 +39,9 @@ def sera_loss(preds, targets, relevances):
     """
     SERA loss function
     
-    preds:        Tensor holding model predictions 
-    targets:      Tensor holding targets 
-    relevances:   Tensor holding relevance values as computed by the data loader
+    preds:        Tensor of size (batch_size, frames_predict, 64, 64) holding model predictions 
+    targets:      Tensor of size (batch_size, frames_predict, 64, 64) holding targets 
+    relevances:   Tensor of size (batch_size, frames_predict, 64, 64) holding relevance values as computed by the data loader
     """
     dt = 0.1
     sera = 0.

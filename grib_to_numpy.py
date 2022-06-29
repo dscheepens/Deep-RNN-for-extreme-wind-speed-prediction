@@ -5,7 +5,7 @@ import pygrib
 # Data from: 
 # https://cds.climate.copernicus.eu/cdsapp#!/dataset/reanalysis-era5-pressure-levels?tab=form
 # 'U-component of wind' and 'V-component of wind' at 1000, 925, 850 or 775 hPa. 
-# Files were renamed: adaptor.mars.internal-U-component_[insert hPa here].grib
+# Files were renamed: adaptor.mars.internal-U-component_[hPa].grib
 
 
 def grib_to_numpy(root, hpa): 

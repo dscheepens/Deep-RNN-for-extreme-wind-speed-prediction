@@ -1,7 +1,6 @@
 import torch
 from torch import nn
 from collections import OrderedDict
-from sklearn.metrics import accuracy_score, balanced_accuracy_score, classification_report, confusion_matrix
 import numpy as np 
 #import pywt 
 
@@ -55,13 +54,13 @@ def make_layers(block):
 
 
 def standardize_local(data):
-    data2 = data.copy()
-    m = data2.mean(0)
-    s = data2.std(0)
+    #data2 = data.copy()
+    m = data.mean(0)
+    s = data.std(0)
     zvals = [m,s]
     #for j in range(len(data)):
-    data2 = (data2 - m)/s
-    return data2, zvals
+    data = (data - m)/s
+    return data, zvals
 
 
 def function_hist(a, ini, final, num):
@@ -71,34 +70,22 @@ def function_hist(a, ini, final, num):
     return hist, bins
 
 
-def chunkify(data, args):
+def chunkify(data, args, shift=12):
     num_samples = len(data)
 
     num_input = args.frames_predict
     num_output = args.frames_predict
 
-    from_ = 0
-    to_ = num_samples - num_input - num_output
-    shift_ = 12 
+    end = num_samples - num_input - num_output
 
     inputs = []
     targets = []
-    for i in range(from_, to_, shift_):
-        chunked_inputs = []
-        chunked_targets = []
-        
-        for chunk in data[i : i+num_input]:
-            chunked_inputs.append(chunk)
-            
-        for chunk in data[i+num_input : i+num_input+num_output]:
-            chunked_targets.append(chunk)
-            
-        inputs.append(chunked_inputs)
-        targets.append(chunked_targets)
-        
-    inputs = np.array(inputs, dtype=float)  
-    targets = np.array(targets, dtype=float)  
-    
+    for i in range(0, end+shift, shift):
+        #if i%(shift*1000)==0: 
+        #    print(i)
+        inputs.append(data[i : i+num_input])
+        targets.append(data[i+num_input : i+num_input+num_output]) 
+
     return inputs, targets
 
 
@@ -107,8 +94,9 @@ def chunkify(data, args):
 ####################################################################
     
     
-def predict_batchwise(dataloader, model, device, report=False):
+def predict_batchwise(dataloader, model, device):
     model.eval()
+    
     inputs = []
     predictions = []
     targets = []
@@ -126,17 +114,37 @@ def predict_batchwise(dataloader, model, device, report=False):
     inputs = np.concatenate(inputs, axis=0)
     targets = np.concatenate(targets, axis=0)
     predictions = np.concatenate(predictions, axis=0) 
-    
-    if report: 
-        targets = np.array(np.floor(targets),dtype=int).reshape(-1)
-        predictions = np.array(np.floor(predictions),dtype=int).reshape(-1)
-        acc = accuracy_score(targets, predictions)
-        bacc = balanced_accuracy_score(targets, predictions)
-        report = classification_report(targets, predictions, target_names=list(map(str, list(range(-2,4)))), zero_division=0)
-    else: 
-        acc, bacc, report = None, None, None
         
-    return inputs, targets, predictions, acc, bacc, report
+    return inputs, targets, predictions
+
+def predict_batchwise_ensemble(dataloader, models, device):
+    for model in models:
+        model.eval()
+        
+    inputs = []
+    predictions = []
+    targets = []
+
+    for batch in dataloader:  
+        inputs.append(batch[0].squeeze().numpy())
+     
+        batch_data = batch[0].to(device).unsqueeze(2)
+        
+        preds = []
+        for model in models: 
+            pred = model(batch_data).squeeze().detach().cpu().numpy()
+            preds.append(pred)
+           
+        predictions.append((preds[0]+preds[1]+preds[2]+preds[3]+preds[4])/5)
+        
+        target = batch[1].detach().cpu().numpy()
+        targets.append(target)
+    
+    inputs = np.concatenate(inputs, axis=0)
+    targets = np.concatenate(targets, axis=0)
+    predictions = np.concatenate(predictions, axis=0) 
+        
+    return inputs, targets, predictions
 
 
 def get_persistence_forecast(inputs): 
@@ -165,7 +173,14 @@ def get_random_forecast(predictions, targets):
     #print('r:',r)
 
     return np.random.choice([0, 1], size=predictions.shape, p=[1-r, r])
+   
     
+def get_bias(counts):
+    hits = counts['tp']
+    false_alarms = counts['fp']
+    misses = counts['fn']
+    true_negs = counts['tn']    
+    return (hits+false_alarms)/(hits+misses)
     
 def get_sedi(counts): 
     hits = counts['tp']
@@ -178,9 +193,11 @@ def get_sedi(counts):
     
     a = np.log(f)-np.log(h)+np.log(1-h)-np.log(1-f)
     b = np.log(f)+np.log(h)+np.log(1-h)+np.log(1-f)
-    return a/b
+    if np.isnan(a/b): 
+        return 0.0
+    else: 
+        return a/b
     
-
 def get_sedi_et(counts, counts_random):
     sedi = get_sedi(counts)
     sedi_random = get_sedi(counts_random)
@@ -216,7 +233,7 @@ def get_counts_from_binary_per_time(predictions, targets, args):
             b1 = ci & false[:,t]              #prediction was wrong
             b2 = predictions[:,t]==j            #predicted category was j 
             cm[t, j, i] += (b1 & b2).sum() 
-                      
+    
     counts = {t: {'tp':0,'fp':0, 'fn':0, 'tn':0} for t in range(0, args.frames_predict)}
         
     for t in range(0,args.frames_predict):
@@ -230,8 +247,7 @@ def get_counts_from_binary_per_time(predictions, targets, args):
 
 def get_counts_from_binary(predictions, targets):    
     
-    #cm = confusion_matrix(targets.reshape(-1), predictions.reshape(-1), labels=[0,1])
-    #print(cm)
+    #cm = confusion_matrix(targets.reshape(-1), predictions.reshape(-1), labels=[1,0])
     
     cm = np.zeros((2, 2))
     
@@ -262,26 +278,26 @@ def get_counts_from_binary(predictions, targets):
 ####################################################################
 
 
-def minimum_coverage(preds, preds_random, targs, args, scale=(1,1), threshold=0, time_comp=True): 
+def minimum_coverage(preds, targs, args, scale=(1,1), threshold=0, time_comp=True): 
     # data dim = (Num, t, l, l)
     offset = int((scale[0]-1)/2)
     s = scale[0]*scale[1]
     n = targs.shape[-1]
     N = (n-2*offset)**2
     
-    reduced_rands = np.zeros(shape=(preds_random.shape[0], preds_random.shape[1], n-2*offset, n-2*offset))
+    #reduced_rands = np.zeros(shape=(preds_random.shape[0], preds_random.shape[1], n-2*offset, n-2*offset))
     reduced_preds = np.zeros(shape=(preds.shape[0], preds.shape[1], n-2*offset, n-2*offset))
     reduced_targs = np.zeros(shape=(targs.shape[0], targs.shape[1], n-2*offset, n-2*offset))
     
     if scale == (1,1): 
-        reduced_rands = preds_random
+        #reduced_rands = preds_random
         reduced_preds = preds >= threshold
         reduced_targs = targs >= threshold 
     else: 
         for i in range(offset, n-offset):
             for j in range(offset, n-offset):  
                 #if threshold>=0:
-                Rj = (preds_random[:,:,i-offset:i+1+offset,j-offset:j+1+offset]).sum(axis=(2,3))/s
+                #Rj = (preds_random[:,:,i-offset:i+1+offset,j-offset:j+1+offset]).sum(axis=(2,3))/s
                 Pj = (preds[:,:,i-offset:i+1+offset,j-offset:j+1+offset]>=threshold).sum(axis=(2,3))/s
                 Tj = (targs[:,:,i-offset:i+1+offset,j-offset:j+1+offset]>=threshold).sum(axis=(2,3))/s
                 #if threshold<0:
@@ -290,23 +306,23 @@ def minimum_coverage(preds, preds_random, targs, args, scale=(1,1), threshold=0,
                 #    Tj = (targs[:,:,i-offset:i+1+offset,j-offset:j+1+offset]<threshold).sum(axis=(2,3))/s
                     
                 # minimum coverage: 
-                reduced_rands[:,:,i-offset,j-offset] = Rj >= 1/s
+                #reduced_rands[:,:,i-offset,j-offset] = Rj >= 1/s
                 reduced_preds[:,:,i-offset,j-offset] = Pj >= 1/s
                 reduced_targs[:,:,i-offset,j-offset] = Tj >= 1/s 
        
-    #print('\n')
-    #print(reduced_rands.sum()/(reduced_rands.shape[0]*reduced_rands.shape[1]*reduced_rands.shape[2]*reduced_rands.shape[3]))
+    scores_scales = np.zeros(2)
     counts = get_counts_from_binary(reduced_preds, reduced_targs)
-    counts_random = get_counts_from_binary(reduced_rands, reduced_targs)
-    scores_scales = get_sedi_et(counts, counts_random)
-    #print(counts_random)
-    #print('\n')
+    #counts_random = get_counts_from_binary(reduced_rands, reduced_targs)
+    scores_scales[0] = get_sedi(counts)
+    scores_scales[1] = get_bias(counts)
     
-    #counts = get_counts_from_binary_per_time(reduced_preds, reduced_targs, args)
+    scores_times = np.zeros((2,12))
+    counts = get_counts_from_binary_per_time(reduced_preds, reduced_targs, args)
     #counts_random = get_counts_from_binary_per_time(reduced_rands, reduced_targs, args)
-    #scores_times = np.array([get_sedi_et(counts[t], counts_random[t]) for t in counts.keys()])
-
-    return scores_scales, scores_scales #scores_times 
+    scores_times[0,:] = np.array([get_sedi(counts[t]) for t in range(0, args.frames_predict)])
+    scores_times[1,:] = np.array([get_bias(counts[t]) for t in range(0, args.frames_predict)])
+    
+    return scores_scales, scores_times
    
 
 def fractions_skill_score(pred, targets, scale=(1,1), threshold=None, categorical=False, time_comp=True):
