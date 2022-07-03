@@ -266,21 +266,16 @@ if __name__ == "__main__":
     args.epochs = 100 
     args.batch_size = 16
     args.hpa = 1000
-    
-    args.loss = 'sera'
-    args.num_layers = 5 
-    
-    model_name = '%s_%s_%s_40years_2'%(args.loss, args.num_layers, args.hpa)
-    train(model_name, args, a=0.75, b=1.0, c=args.begin_testset)
-    
+        
 #     for loss_name, num_layers in [['wmae',5],['wmse',5],['sera',5],['mse',5],['mae',4]]:
 #         gc.collect()
 #         args.loss = loss_name
 #         args.num_layers = num_layers
 
-#         model_name = loss_name+'_%s_%s_extended'%(args.num_layers, args.hpa)
-#         train(model_name, args, a=0.75, b=1.0, c=args.begin_testset)
+#         model_name = '%s_%s_%s_40years'%(args.loss, args.num_layers, args.hpa)
+#         train(model_name, args, a=0.95, b=1.0, c=args.begin_testset)
         
+        #for 4-fold cross-validation... 
         #train(model_name+'/cv0', args, a=0.75, b=1.0, c=args.begin_testset)
         #train(model_name+'/cv1', args, a=0.50, b=0.75, c=args.begin_testset) 
         #train(model_name+'/cv2', args, a=0.25, b=0.50, c=args.begin_testset)
