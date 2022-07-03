@@ -10,7 +10,7 @@ The ConvLSTM has been proposed in the following paper: [Convolutional LSTM Netwo
 
 The ConvLSTM network has an encoder-decoder structure, taking in a sequence of 12 frames and attempts to best predict the next 12 frames. 
 
-Parameters can be selected as arguments in main.py. 
+Parameters can be selected as arguments in main.py. Root must be set manually. Data root is assumed to be root + '\data'. 
 
 ## Instructions
 
