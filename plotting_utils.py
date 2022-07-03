@@ -382,18 +382,19 @@ def plot_forecast_comparison(inputs, targets, pred_list, date, t, vmin, vmax, sa
     
     plt.suptitle(str(date.date())+' '+str(date.time())[:5], fontsize=14, y=0.93)
     if save_as!=None: 
-        plt.savefig(save_as)
+        plt.savefig(save_as, dpi=300)
+        
     plt.show()
     plt.close()
     return
 
 
-def save_animation(inputs, targets, predictions, percentiles, vmin, vmax, save_as):
+def save_animation(inputs, targets, predictions, date, vmin, vmax, save_as):
     cmap='jet'
     
     num_images = len(inputs)+len(targets)
     fps = 3    
-    dpi = 400
+    dpi = 300
     
     fig = plt.figure()
 
@@ -404,7 +405,7 @@ def save_animation(inputs, targets, predictions, percentiles, vmin, vmax, save_a
     ax1.get_xaxis().set_visible(False)
     ax1.get_yaxis().set_visible(False)
     ax1.set_title('Input', fontsize=4, y=0.95)
-    im1 = ax1.imshow(inputs[0], cmap, vmin, vmax)
+    im1 = ax1.imshow(inputs[0], cmap=cmap, vmin=vmin, vmax=vmax)
     
     ax2 = fig.add_subplot(132)
     ax2.set_aspect('equal')
@@ -413,7 +414,7 @@ def save_animation(inputs, targets, predictions, percentiles, vmin, vmax, save_a
     ax2.get_xaxis().set_visible(False)
     ax2.get_yaxis().set_visible(False)
     ax2.set_title('Target', fontsize=4, y=0.95)
-    im2 = ax2.imshow(np.zeros((64,64)), cmap, vmin, vmax)
+    im2 = ax2.imshow(np.zeros((64,64)), cmap=cmap, vmin=vmin, vmax=vmax)
     
     ax3 = fig.add_subplot(133)
     ax3.set_aspect('equal')
@@ -422,14 +423,13 @@ def save_animation(inputs, targets, predictions, percentiles, vmin, vmax, save_a
     ax3.get_xaxis().set_visible(False)
     ax3.get_yaxis().set_visible(False)
     ax3.set_title('Prediction', fontsize=4, y=0.95)
-    im3 = ax3.imshow(np.zeros((64,64)), cmap, vmin, vmax)
+    im3 = ax3.imshow(np.zeros((64,64)), cmap=cmap, vmin=vmin, vmax=vmax)
 
     #im.set_clim([0,1])
     plt.suptitle(str(date.date())+' '+str(date.time())[:5], fontsize=4)
     fig.set_size_inches([2,1])
     
-
-    tight_layout()
+    plt.tight_layout()
     
     plt.subplots_adjust(left=0.01,
             bottom=0.01, 
@@ -540,54 +540,52 @@ def plot_intensity_scale_diagram(root, model, save_as):
     return 
     
     
-def forecasts_augmented(net, inputs, targets, device):   
+def forecasts_augmented(ensemble, inputs, targets, device):   
     np.random.seed(999)
-    random_indices = np.random.choice(np.arange(len(inputs.reshape(-1,64,64))), size=50, replace=False)
-    random_selection = inputs.reshape(-1,64,64)[random_indices]
        
-    rmse_arr = np.zeros((12,50,len(inputs))) 
-    scc_arr = np.zeros((12,50,len(inputs)))   
-     
-    for t in range(len(inputs)):  
+    rmse = np.zeros(12)      
         
-        inputs_ = inputs[t:t+1].copy()
-        targets_ = targets[t]
+    for t in range(12): 
+        print('t=',t)
+        random_indices = np.random.choice(np.arange(len(inputs)), size=len(inputs), replace=False)
+        inputs_ = inputs.copy() 
+        inputs_[:,t] = inputs_[random_indices][:,t] 
+        
+        list_preds = []
+        list_preds_ = []
+                                
+        for i in range(len(inputs)):  
+            pred = ensemble.predict(inputs[i], device)
+            pred_ = ensemble.predict(inputs_[i], device)
             
-        for i in range(12):
+            list_preds.append(pred) 
+            list_preds_.append(pred_) 
             
-            for j, random_frame in enumerate(random_selection):
-                
-                inputs_augment = inputs_.copy()
-                inputs_augment[:,i] = random_frame
+        preds = np.array(list_preds)  
+        preds_ = np.array(list_preds_)  
 
-                preds_ = net(torch.from_numpy(inputs_augment).float().to(device).unsqueeze(2)).squeeze().detach().cpu().numpy()
+        a = np.sqrt(np.mean((targets-preds)**2))
+        b = np.sqrt(np.mean((targets-preds_)**2))
+        rmse[t] = (1-a/b)*100
 
-                scc_arr[i,j,t] = scc(targets_,preds_)
-                rmse_arr[i,j,t] = np.sqrt(np.mean((targets_-preds_)**2))
-                
-    return rmse_arr, scc_arr 
+    return rmse
 
 
 
 def plot_score_over_leadtime(means, stds, ylabel, save_as): 
     plt.style.use('seaborn')
 
-    fig, ax = plt.subplots(1,1,figsize=(12,4))
-    ax.set_title('%s over lead-time'%ylabel, pad=10, fontsize=14)
-    ax.errorbar(range(1,13),
-                means,
-                yerr=stds, 
-                ls="--",
-                linewidth=1.5,
-                elinewidth=1, 
-                capsize=5,
-                capthick=1)
+    fig, ax = plt.subplots(1,1,figsize=(8,4))
+    #ax.set_title('%s over lead-time'%ylabel, pad=10, fontsize=14)
+    ax.plot(range(1,13),means,ls="--")
     ax.scatter(range(1,13),means)
-    ax.set_ylabel(ylabel, fontsize=12)
-    ax.set_xlabel('Lead-time [h]',fontsize=12)
+    ax.set_ylabel(ylabel + ' skill score [%]', fontsize=12)
+    ax.set_xlabel('Input frame T [h]',fontsize=12)
     #ax.set_ylim(0.,2.)
     #ax.set_yticks(np.arange(0.,2.0+0.2,0.2))
-    ax.grid()
+    ax.grid(True)
+    ax.set_xticks(range(1,13))
+    ax.set_xticklabels(range(-11,1))
     
     if save_as!=None: 
         plt.savefig(save_as)

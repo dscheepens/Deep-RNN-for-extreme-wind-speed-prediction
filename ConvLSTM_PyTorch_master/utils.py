@@ -117,28 +117,15 @@ def predict_batchwise(dataloader, model, device):
         
     return inputs, targets, predictions
 
-def predict_batchwise_ensemble(dataloader, models, device):
-    for model in models:
-        model.eval()
-        
+def predict_batchwise_ensemble(dataloader, ensemble, device):
     inputs = []
     predictions = []
     targets = []
 
     for batch in dataloader:  
         inputs.append(batch[0].squeeze().numpy())
-     
-        batch_data = batch[0].to(device).unsqueeze(2)
-        
-        preds = []
-        for model in models: 
-            pred = model(batch_data).squeeze().detach().cpu().numpy()
-            preds.append(pred)
-           
-        predictions.append((preds[0]+preds[1]+preds[2]+preds[3]+preds[4])/5)
-        
-        target = batch[1].detach().cpu().numpy()
-        targets.append(target)
+        predictions.append(ensemble.predict(batch[0].squeeze(), device))
+        targets.append(batch[1].detach().cpu().numpy())
     
     inputs = np.concatenate(inputs, axis=0)
     targets = np.concatenate(targets, axis=0)

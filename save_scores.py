@@ -110,7 +110,7 @@ def save_all_scores_ensemble(root, args, persist=False):
     
     nets = []
     
-    for loss, num_layers in [['wmae',5],['wmse',5],['sera',5],['mae',4],['mse',5]]:
+    for loss, num_layers in [['wmae',5],['wmse',5],['sera',5]]:
         args.loss = loss
         args.num_layers = num_layers
         model_name = str(args.loss) + '_' + str(args.num_layers) + '_' + str(args.hpa) + '_40years'
@@ -158,13 +158,16 @@ if __name__=='__main__':
     args = args()
       
     persist=False 
-    save_all_scores_ensemble(root, args, persist)
-    save_all_scores(root, args, persist=True)
-    for loss_name, num_layers in [['wmae',5],['wmse',5],['sera',5],['mae',4],
-                                  ['mse',5]]:
-        gc.collect()
-        args.loss = loss_name 
-        args.num_layers = num_layers
-        save_all_scores(root, args, persist)
-        persist=False
+#     save_all_scores_ensemble(root, args, persist) # ensemble 
+#     save_all_scores(root, args, persist=True)     # persistence 
+
+# ### single models: ### 
+
+#     for loss_name, num_layers in [['wmae',5],['wmse',5],['sera',5],['mae',4],
+#                                   ['mse',5]]:
+#         gc.collect()
+#         args.loss = loss_name 
+#         args.num_layers = num_layers
+#         save_all_scores(root, args, persist)
+#         persist=False
 

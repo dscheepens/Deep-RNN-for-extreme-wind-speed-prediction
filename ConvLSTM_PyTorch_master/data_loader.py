@@ -119,13 +119,12 @@ def calc_weights_local_percentiles(data):
     
     def get_percentiles(data):
         percentiles = []
-        for p in np.arange(50,100): #[50,75,90,91,92,93,94,95,96,97,98,99,99.1,99.2,99.3,99.4,99.5,99.6,99.7,99.8,99.9]:
+        for p in np.arange(50,100):
             percentiles.append(np.percentile(data,p))
         return np.array(percentiles)
     
     weights = 50/np.arange(50,0,-1)
     weights/=weights[0]
-    #print('weights:',weights)
     
     all_weights = np.zeros(data.shape)
     for i in range(64):
@@ -145,15 +144,13 @@ def calc_weights_local_percentiles(data):
 
     
 def load_era5(root, args, a, b, c, training=True):
-    # Load ERA5 train, validation and test data. 
+    ### Load ERA5 train, validation and test data. 
 
     data = np.load(root+'era5_standardised.npy')
     print('number of years:', len(data)/(24*365))
        
     if training:   
-        
-        #data = data[24*365*(c-8):24*365*c] # don't use test data
-        data = data[:24*365*c] # don't use test data
+        data = data[:24*365*c] # 40 years, don't use test data
         print('number of training/validation years:', len(data)/(24*365))
         
         inputs, targets = utils.chunkify(data, args) 
@@ -173,21 +170,15 @@ def load_era5(root, args, a, b, c, training=True):
        
         train_inputs = torch.FloatTensor(inputs[:int(n*a)]+inputs[int(n*b):])
         val_inputs = torch.FloatTensor(inputs[int(n*a):int(n*b)])
-        #train_inputs = torch.from_numpy(np.concatenate((inputs[:int(n*a)], inputs[int(n*b):]))).float()
-        #val_inputs = torch.from_numpy(inputs[int(n*a):int(n*b)]).float()
         del inputs
         
         train_targets = torch.FloatTensor(targets[:int(n*a)]+targets[int(n*b):])
         val_targets = torch.FloatTensor(targets[int(n*a):int(n*b)])
-        #train_targets = torch.from_numpy(np.concatenate((targets[:int(n*a)], targets[int(n*b):]))).float()
-        #val_targets = torch.from_numpy(targets[int(n*a):int(n*b)]).float()
         del targets
            
         if args.loss not in ['mae','mse']: 
             train_x = torch.FloatTensor(x[:int(n*a)]+x[int(n*b):])
             val_x = torch.FloatTensor(x[int(n*a):int(n*b)])
-            #train_rels = torch.from_numpy(np.concatenate((rels[:int(n*a)], rels[int(n*b):]))).float()
-            #val_rels = torch.from_numpy(rels[int(n*a):int(n*b)]).float()
             del x 
             train_dataset = TensorDataset(*(train_inputs, train_targets, train_x))
             del train_inputs, train_targets, train_x
@@ -227,28 +218,5 @@ def load_era5(root, args, a, b, c, training=True):
                                          drop_last=False)
         
         return test_loader
-    
-    
-    
-    #train_rels = relevance(train_targets, y1, y2)
-    #val_rels = relevance(val_targets, y1, y2)
-    #test_rels = relevance(test_targets, y1, y2)    
-    
-    #transform=transforms.Compose([
-    #    transforms.ToTensor(),
-    #    AddGaussianNoise(0., 1.)])
-    
-    #train_dataset = CustomTensorDataset(tensors=(train_inputs, train_targets, train_rels), 
-    #                                    transform=AddGaussianNoise(0., 0.1))
-   
-    
-    
-
-    #sampler = WeightedRandomSampler(train_rels+0.01, int(len(train_rels)/2), replacement=False)
-    
-    
-    
-
-    
 
 
