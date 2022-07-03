@@ -4,7 +4,7 @@
 
 ## ConvRNN cell
 
-This code has been modified and extended from https://github.com/jhhuang96/ConvLSTM-PyTorch.git. 
+This code has been modified and extended from https://github.com/jhhuang96/ConvLSTM-PyTorch. 
 
 The ConvLSTM has been proposed in the following paper: [Convolutional LSTM Network: A Machine Learning Approach for Precipitation Nowcasting](https://arxiv.org/abs/1506.04214)
 
