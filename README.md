@@ -5,6 +5,12 @@ Model and training code can be found in \ConvLSTM_PyTorch_master. Example model 
 
 All figures and visualisations can be reconstructed in visualisation_notebook.ipynb. 
 
+Clone repository
+
+```python
+git clone https://github.com/dscheepens/Deep-RNN-for-extreme-wind-speed-prediction.git 
+```
+
 ## Data 
 
 Wind speed data was obtained from the Copernicus Climate Data Store: https://cds.climate.copernicus.eu/cdsapp#!/dataset/reanalysis-era5-pressure-levels?tab=form. 
@@ -15,4 +21,6 @@ data_loader.py requires the data to be in the .npy format, rather than .grib. Th
 
 ## Citation 
 
+```python
+```
 
