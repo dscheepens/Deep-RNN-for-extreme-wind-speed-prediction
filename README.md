@@ -3,6 +3,7 @@ Paper code for "An adapted convolutional RNN model for spatio-temporal predictio
 
 Model and training code can be found in \ConvLSTM_PyTorch_master. Example model forecasts can be found in \example_forecasts.
 
+All figures and visualisations can be reconstructed in visualisation_notebook.ipynb. 
 
 ## Data 
 
