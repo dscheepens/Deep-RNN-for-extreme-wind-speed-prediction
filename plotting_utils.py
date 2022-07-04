@@ -38,7 +38,7 @@ def plot_example_frame(data, indx, save_as):
     ax.plot(2.75+0.25*32, 56-0.25*32, 's', color='black',markerfacecolor='white',markersize=7, transform=ccrs.PlateCarree())
     ax.plot(2.75+0.25*56, 56-0.25*59, 's', color='black',markerfacecolor='white',markersize=7, transform=ccrs.PlateCarree())
         
-    vmin, vmax = data[indx].min(), data[indx].max()    
+    vmin, vmax = 0, data[indx].max()    
     im0 = ax.imshow(data[indx], cmap=cmap, interpolation='lanczos', vmin=vmin, vmax=vmax, extent=extent, transform=ccrs.PlateCarree())
     cbar0 = plt.colorbar(im0,ax=ax,fraction=0.046, pad=0.04)
     #cbar0.set_label(label=r'Wind speed [ms$^{-1}$]',size=14, labelpad=10)
@@ -95,19 +95,19 @@ def plot_maps(data, save_as):
     data1 = data.mean(0)
     data2 = data.std(0)
 
-    vmin, vmax = data0.min(), data0.max()    
+    vmin, vmax = 0, data0.max()    
     im0 = axs[0].imshow(data0, cmap=cmap, interpolation='lanczos', vmin=vmin, vmax=vmax, extent=extent, transform=ccrs.PlateCarree())
     cbar0 = plt.colorbar(im0,ax=axs[0],fraction=0.046, pad=0.04)
     #axs[0].set_title('Maximum')
     
-    vmin, vmax = data1.min(), data1.max()
+    vmin, vmax = 0, data1.max()
     im1 = axs[1].imshow(data1, cmap=cmap, interpolation='lanczos', vmin=vmin, vmax=vmax, extent=extent, transform=ccrs.PlateCarree())
     cbar1 = plt.colorbar(im1,ax=axs[1],fraction=0.046, pad=0.04)
     #axs[1].set_title('Mean')
     if vmin==vmax:
         cbar1.set_ticks([0])
     
-    vmin, vmax = data2.min(), data2.max()
+    vmin, vmax = 0, data2.max()
     im2 = axs[2].imshow(data2, cmap=cmap, interpolation='lanczos', vmin=vmin, vmax=vmax, extent=extent, transform=ccrs.PlateCarree())
     cbar2 = plt.colorbar(im2,ax=axs[2],fraction=0.046, pad=0.04)
     #axs[2].set_title('Std')
@@ -378,7 +378,7 @@ def plot_forecast_comparison(inputs, targets, pred_list, date, t, vmin, vmax, sa
     cbar_ax = fig.add_axes([0.845, 0.43, 0.008, 0.2])
     cbar = fig.colorbar(im, cax=cbar_ax)
     cbar.set_label(r'wind speed [$\sigma$]', fontsize=14, rotation=90, labelpad=10)
-    cbar.set_ticks([0.0,1.0,2.0,3.0,4.0])
+    #cbar.set_ticks([0.0,1.0,2.0,3.0,4.0])
     
     plt.suptitle(str(date.date())+' '+str(date.time())[:5], fontsize=14, y=0.93)
     if save_as!=None: 
@@ -521,9 +521,10 @@ def plot_intensity_scale_diagram(root, model, save_as):
 
     sb.heatmap(df, annot=True, fmt=".2f", 
                cmap='YlGnBu_r' ,
-               vmin=0.65, 
-               vmax=0.95,
-               cbar=False) 
+               vmin=0.50, 
+               vmax=1.0,
+               cbar=True,
+               cbar_kws={'ticks':[0.5,1.0],'shrink':0.6}) 
 
     ax.set_ylabel('Spatial scale [km]',fontsize=12,labelpad=10)
     ax.set_xlabel('Intensity threshold (percentile)',fontsize=12, labelpad=10)
