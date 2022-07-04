@@ -5,6 +5,8 @@ Model and training code can be found in \ConvLSTM_PyTorch_master. Example model 
 
 All figures and visualisations can be reconstructed in visualisation_notebook.ipynb. 
 
+All scores were computed with save_scores.py. 
+
 Clone repository
 
 ```python
@@ -18,6 +20,8 @@ Wind speed data was obtained from the Copernicus Climate Data Store: https://cds
 Used were 'U-component of wind' and 'V-component of wind' at pressure levels 1000, 925, 850 and 775 hPa (seperately) with an hourly interval for a 10 year duration and between 3-18.75 longitude, 40-55.75 latitude. 
 
 data_loader.py requires the data to be in the .npy format, rather than .grib. This can be achieved with the file grib_to_numpy.py.
+
+preprocessing.py standardises the data and saves it as era5_standardised.npy into the specified data root. 
 
 ## Citation 
 
