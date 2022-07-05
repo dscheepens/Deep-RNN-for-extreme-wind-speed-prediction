@@ -17,7 +17,10 @@ git clone https://github.com/dscheepens/Deep-RNN-for-extreme-wind-speed-predicti
 
 Example: 
 
-<img src=“example_forecasts/example_99.pdf”>
+<img 
+src=“https://github.com/dscheepens/Deep-RNN-for-extreme-wind-speed-prediction/blob/8873c78403863b1d4de999f0bc59237affb39c09/example_forecasts/example_99.pdf”
+raw=true
+/>
 
 ## Data 
 
