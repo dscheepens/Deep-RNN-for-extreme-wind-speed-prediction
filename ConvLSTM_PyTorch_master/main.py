@@ -79,7 +79,9 @@ def train(STAMP, args, a, b, c):
     main function to run the training
     
     STAMP:    Stamp of this model run 
-    Validation set within [a,b] where a and b<=0.8 are percentages of the dataset. Rest is used for training. [0.8,1.0] is reserved for testing.
+    Validation set within [a,b] where a and b are fractions of the dataset up until c years. Everything outside of [a,b] is used for training.
+    The years beyond c are used for testing. The full dataset consists of 42 years, so setting c=40 means that the last two years are used for testing. 
+    In addition, setting a=0.75 and b=1.0 means that the fraction [0.75,1.0] of the 40 years is used as validation and [0.0,0.75] is used for training. 
     '''
 
     save_dir = root + 'saved_models/' + STAMP
