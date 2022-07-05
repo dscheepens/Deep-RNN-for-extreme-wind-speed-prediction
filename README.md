@@ -1,13 +1,15 @@
 # Deep-RNN-for-extreme-wind-speed-prediction
 Paper code for "An adapted convolutional RNN model for spatio-temporal prediction of wind speed extremes in the short-to-medium range for wind energy applications"
 
-Model and training code can be found in \ConvLSTM_PyTorch_master. Example model forecasts can be found in \example_forecasts.
+Model and training code can be found in \ConvLSTM_PyTorch_master. 
 
-All figures and visualisations can be reconstructed in visualisation_notebook.ipynb. 
+Example model forecasts can be found in \example_forecasts.
 
-All scores were computed with save_scores.py. 
+All figures can be reconstructed in visualisation_notebook.ipynb, except for the forecast visualisations, which require that the models in question have been trained and saved using \ConvLSTM_PyTorch_master/main.py.   
 
-Clone repository
+All scores were computed with save_scores.py and have been saved in \saved_scores. 
+
+Clone repository: 
 
 ```python
 git clone https://github.com/dscheepens/Deep-RNN-for-extreme-wind-speed-prediction.git 
@@ -27,4 +29,3 @@ preprocessing.py standardises the data and saves it as era5_standardised.npy int
 
 ```python
 ```
-
