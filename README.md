@@ -31,6 +31,8 @@ Used were 'U-component of wind' and 'V-component of wind' at pressure levels 100
 src="front_example.png"
 />
 
+The first row from the top displays the 12 input frames, the second row the succeeding 12 target frames and the following rows the 12 predicted frames of the models. `T` refers to the index of the frame (in hours), with `T=0` denoting the last input frame and `T=+12` denoting the final target and prediction frames. The final row shows the averaged forecast of an ensemble of the W-MAE, W-MSE and SERA-trained models.
+
 ## Citation 
 
 ```python
