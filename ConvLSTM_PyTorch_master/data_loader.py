@@ -8,11 +8,12 @@ from torch.utils.data import Dataset, TensorDataset, WeightedRandomSampler, Rand
 import matplotlib.pyplot as plt 
 #import torchvision.transforms as transforms
 import utils
+import gc 
 
 
-def get_sera_percentiles(data):
+def get_sera_percentiles(data, p0, p1):
     percentiles = []
-    for p in [90,99]:
+    for p in [p0,p1]:
         percentiles.append(np.percentile(data,p))
     return np.array(percentiles)
     
@@ -78,11 +79,11 @@ def calc_relevance(data):
     return rel #torch.from_numpy(rel).float()
 
 
-def calc_relevance_local_percentiles(data):
+def calc_relevance_local_percentiles(data, p0=90, p1=99):
     relevances = np.zeros(data.shape)
     for i in range(64):
         for j in range(64):                 
-            y1, y2 = get_sera_percentiles(data[:,i,j])
+            y1, y2 = get_sera_percentiles(data[:,i,j], p0, p1)
             #print('y1, y2:',np.round(y1,2),np.round(y2,2))
             points = np.array([[y1,0.,0.],[y2,1.,0.]])
             a,b,c,d = pchip(points)
@@ -115,7 +116,7 @@ def calc_weights(data, args):
     return 
     
     
-def calc_weights_local_percentiles(data):
+def calc_weights_local_percentiles(data, method='inv'):
     
     def get_percentiles(data):
         percentiles = []
@@ -123,11 +124,15 @@ def calc_weights_local_percentiles(data):
             percentiles.append(np.percentile(data,p))
         return np.array(percentiles)
     
-    weights = 50/np.arange(50,0,-1)
-    weights/=weights[0]
+    if method=='inv':
+        weights = 50/np.arange(50,0,-1)
+        weights/=weights[0]
+    elif method=='lin':
+        weights = np.arange(1,51,1)
     
     all_weights = np.zeros(data.shape)
     for i in range(64):
+        print(i)
         for j in range(64):
 
             percentiles = get_percentiles(data[:,i,j])
@@ -138,55 +143,99 @@ def calc_weights_local_percentiles(data):
                 indices = np.where( (data[:,i,j]>=percentiles[k]) & (data[:,i,j]<percentiles[k+1]) )
                 cats[indices] = k
 
-            all_weights[:,i,j] = weights[cats]           
+            all_weights[:,i,j] = weights[cats]    
+            
     return all_weights 
 
-
+from sys import getsizeof
     
 def load_era5(root, args, a, b, c, training=True):
     ### Load ERA5 train, validation and test data. 
-
+    
+    print('loading data')
     data = np.load(root+'era5_standardised.npy')
-    print('number of years:', len(data)/(24*365))
-       
+    
+    print('number of data years:', len(data)/(24*365))
+           
     if training:   
-        data = data[:24*365*c] # 40 years, don't use test data
+        data = data[:24*365*c] # don't use test data
         print('number of training/validation years:', len(data)/(24*365))
         
-        inputs, targets = utils.chunkify(data, args) 
-        n = len(inputs)
-
+        # supplementary for sera, wmae or wmse
         if args.loss == 'sera':
-            #relevances = calc_relevance(data) 
-            x = calc_relevance_local_percentiles(data) 
+            sup = calc_relevance_local_percentiles(data, args.p0, args.p1) 
             print('relevances computed.')
-            _, x = utils.chunkify(x, args)  
+            #chunkify:
+            sup = sup[:int(sup.shape[0]/12)*12].reshape((int(sup.shape[0]/12),12,64,64))
         elif args.loss in ['wmae', 'wmse']: 
-            #calc_weights(data, args)
-            x = calc_weights_local_percentiles(data)
+            sup = calc_weights_local_percentiles(data, method=args.weighting_method)
             print('weights computed.')
-            _, x = utils.chunkify(x, args)  
-        del data 
-       
-        train_inputs = torch.FloatTensor(inputs[:int(n*a)]+inputs[int(n*b):])
-        val_inputs = torch.FloatTensor(inputs[int(n*a):int(n*b)])
-        del inputs
+            #chunkify:
+            sup = sup[:int(sup.shape[0]/12)*12].reshape((int(sup.shape[0]/12),12,64,64))
+            
+        print('done.')
         
-        train_targets = torch.FloatTensor(targets[:int(n*a)]+targets[int(n*b):])
-        val_targets = torch.FloatTensor(targets[int(n*a):int(n*b)])
-        del targets
-           
+        #chunkify: 
+        data = data[:int(data.shape[0]/12)*12].reshape((int(data.shape[0]/12),12,64,64))
+        # (inputs are given as data[:-1], targets as data[1:])
+        n = len(data)
+        
+        print('data chunked.')
+        gc.collect()
+                
+        data_train = data[:int(n*a)]
+        data_val = data[int(n*a):]
+        del data 
+        gc.collect()
+        print('done')
+        
+        train_inputs = torch.from_numpy(data_train[:-1]).float()
+        print('done')
+        train_targets = torch.from_numpy(data_train[1:]).float()
+        del data_train 
+        gc.collect()
+        print('train part done.')
+
+        val_inputs = torch.from_numpy(data_val[:-1]).float()
+        print('done')
+        val_targets = torch.from_numpy(data_val[1:]).float()
+        del data_val
+        gc.collect()
+        print('val part done.')
+                   
         if args.loss not in ['mae','mse']: 
-            train_x = torch.FloatTensor(x[:int(n*a)]+x[int(n*b):])
-            val_x = torch.FloatTensor(x[int(n*a):int(n*b)])
-            del x 
-            train_dataset = TensorDataset(*(train_inputs, train_targets, train_x))
-            del train_inputs, train_targets, train_x
-            val_dataset = TensorDataset(*(val_inputs, val_targets, val_x))
-            del val_inputs, val_targets, val_x
+            
+            sup_train = sup[:int(n*a)]
+            sup_val = sup[int(n*a):]
+            del sup 
+            gc.collect()
+            
+            train_sups = torch.from_numpy(sup_train[1:]).float()
+            del sup_train
+            gc.collect()
+            print('1')
+            
+            val_sups = torch.from_numpy(sup_val[1:]).float()
+            del sup_val
+            gc.collect()
+            print('2')
+            
+            print('preparing train dataset')
+            
+            train_dataset = TensorDataset(*(train_inputs, train_targets, train_sups))
+            del train_inputs, train_targets, train_sups
+            gc.collect()
+            
+            print('preparing val dataset')
+            
+            val_dataset = TensorDataset(*(val_inputs, val_targets, val_sups))
+            del val_inputs, val_targets, val_sups
+            gc.collect()
         else: 
             train_dataset = TensorDataset(*(train_inputs, train_targets, train_targets))
             val_dataset = TensorDataset(*(val_inputs, val_targets, val_targets))
+            del train_inputs, train_targets, val_inputs, val_targets
+            gc.collect()
 
         train_loader = torch.utils.data.DataLoader(train_dataset,
                                          batch_size=args.batch_size,
@@ -201,16 +250,22 @@ def load_era5(root, args, a, b, c, training=True):
         
     if not training:   
         
-        data = data[24*365*c:]
+        data = data[24*365*c:24*365*args.num_years]
                 
-        inputs, targets = utils.chunkify(data, args) 
-        del data     
+        #chunkify:
+        data = data[:int(data.shape[0]/12)*12].reshape((int(data.shape[0]/12),12,64,64))
         
-        inputs = torch.FloatTensor(inputs)
-        targets = torch.FloatTensor(targets)
-                
+        print('converting to Tensors...')
+        inputs = torch.FloatTensor(data[:-1])
+        targets = torch.FloatTensor(data[1:])
+        del data  
+        gc.collect()
+        print('done')  
+        
         test_dataset = TensorDataset(*(inputs, targets))
         del inputs, targets
+        gc.collect()
+        print('done')
         
         test_loader = torch.utils.data.DataLoader(test_dataset,
                                          batch_size=args.batch_size,

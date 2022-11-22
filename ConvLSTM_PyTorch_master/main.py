@@ -38,16 +38,13 @@ parser.add_argument('--begin_testset', default=40, help='from which year to begi
 parser.add_argument('--frames_predict',default=12,type=int,help='sum of predict frames')
 parser.add_argument('--device',default='cpu')
 parser.add_argument('--hpa',default=1000, help='1000, 925, 850 or 775')
-parser.add_argument('--y1',default=None, help='90th percentile, computed automatically')
-parser.add_argument('--y2',default=None, help='99th percentile, computed automatically')
-parser.add_argument('--weights',default=None, help='weights used for the weighted loss, computed automatically')
-parser.add_argument('--offset',default=None, help='offset used by the weighted loss, computed automatically')
+parser.add_argument('--p0',default=90, help='lower control-point of the SERA loss')
+parser.add_argument('--p1',default=99, help='upper control-point of the SERA loss')
+parser.add_argument('--weighting_method',default='inv', help='inverse (inv) or linear (lin)')
 
 # training/optimization related:
 parser.add_argument('--batch_size', default=16, type=int, help='mini-batch size')
-parser.add_argument('--lr', default=1e-3, type=float, help='learning rate')
-parser.add_argument('--lam', default=1., type=float, help='lambda')
-parser.add_argument('--momentum', default=0.5, type=float, help='momentum')
+parser.add_argument('--lr', default=1e-4, type=float, help='learning rate')
 parser.add_argument('--epochs', default=200, type=int, help='sum of epochs')
 
 args = parser.parse_args()
@@ -74,7 +71,15 @@ else:
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False    
     
-def train(STAMP, args, a, b, c):
+
+def compute_distr(data):
+    l, r = -5, 10 #data.min(), data.max()
+    bins = np.linspace(l, r, (r-l)*10+1)
+    hist, bin_edges = np.histogram(data, bins)
+    return hist, bins 
+
+    
+def train(STAMP, args, a, b, c, save_model=True):
     '''
     main function to run the training
     
@@ -84,8 +89,8 @@ def train(STAMP, args, a, b, c):
     In addition, setting a=0.75 and b=1.0 means that the fraction [0.75,1.0] of the 40 years is used as validation and [0.0,0.75] is used for training. 
     '''
 
-    save_dir = root + 'saved_models/' + STAMP
-    run_dir = root + 'runs/' + STAMP
+    save_dir = root + 'saved_models_final/' + STAMP
+    run_dir = root + 'runs_final/' + STAMP
     
     print(args.model, 'with', args.loss, 'loss at', args.hpa, 'hpa')
     print('device:', args.device)
@@ -93,7 +98,7 @@ def train(STAMP, args, a, b, c):
     print('batch size:', args.batch_size)
     print('epochs:', args.epochs)
     
-    trainLoader, validLoader = load_era5(root=data_root, args=args, a=a, b=b, c=c)
+    trainLoader, validLoader = load_era5(root=data_root, args=args, a=a, b=b, c=c, training=True)
     
     if args.model == 'convlstm':
         encoder_params = convlstm_encoder_params(args.num_layers, input_len=args.frames_predict)
@@ -108,15 +113,17 @@ def train(STAMP, args, a, b, c):
         encoder = Encoder(encoder_params[0], encoder_params[1]).to(device)
         decoder = Decoder(decoder_params[0], decoder_params[1], args.num_layers).to(device)
         net = ED(encoder, decoder)
-
-    if not os.path.isdir(run_dir):
-        os.makedirs(run_dir)
-    tb = SummaryWriter(run_dir)
+    
+    if save_model:
+        if not os.path.isdir(run_dir):
+            os.makedirs(run_dir)
+        tb = SummaryWriter(run_dir)
 
     if torch.cuda.device_count() > 1:
         net = nn.DataParallel(net)
     net.to(device)
-
+    
+    
     if os.path.exists(os.path.join(save_dir, 'checkpoint.pth.tar')):
         # load existing model
         print('==> loading existing model')
@@ -131,8 +138,9 @@ def train(STAMP, args, a, b, c):
         avg_valid_losses = pickle.load(open(os.path.join(save_dir,"avg_valid_losses.p"),"rb"))
         print(avg_valid_losses)
     else:
-        if not os.path.isdir(save_dir):
-            os.makedirs(save_dir)
+        if save_model: 
+            if not os.path.isdir(save_dir):
+                os.makedirs(save_dir)
         cur_epoch = 0   
         # initialize the early_stopping object
         early_stopping = EarlyStopping(patience=20, verbose=True)
@@ -143,10 +151,11 @@ def train(STAMP, args, a, b, c):
         
     print('Number of parameters: %s M.\n'%(utils.count_parameters(net)/1e6))
     
-    with open(save_dir + "/model_params.txt", 'wt') as f:
-        print('%s with %s loss.\n'%(args.model, args.loss), file=f)
-        print('Number of parameters: %s.\n'%utils.count_parameters(net), file=f)
-        print(net, file=f)
+    if save_model: 
+        with open(save_dir + "/model_params.txt", 'wt') as f:
+            print('%s with %s loss.\n'%(args.model, args.loss), file=f)
+            print('Number of parameters: %s.\n'%utils.count_parameters(net), file=f)
+            print(net, file=f)
 
             
     optimizer = optim.Adam(net.parameters(), lr=args.lr)
@@ -165,7 +174,10 @@ def train(STAMP, args, a, b, c):
         ###################
         # train the model #
         ###################
+        gc.collect()
         t = tqdm(trainLoader, leave=False, total=len(trainLoader))
+        
+        preds=[]
         for i, (inputVar, targetVar, xVar) in enumerate(t):
             inputs = inputVar.to(device)  
             targets = targetVar.to(device)  
@@ -177,6 +189,7 @@ def train(STAMP, args, a, b, c):
             optimizer.zero_grad()
             net.train()
             pred = net(inputs.unsqueeze(2)).squeeze()
+            preds.append(pred.detach().cpu().numpy())
             
             loss = loss_functions.choose_loss(device, pred, targets, x, args).requires_grad_()
                         
@@ -189,7 +202,14 @@ def train(STAMP, args, a, b, c):
                 'trainloss': '{:.6f}'.format(loss_aver),
                 'epoch': '{:02d}'.format(epoch)
             })
-        tb.add_scalar('TrainLoss', loss_aver, epoch)
+            
+        hist, bins = compute_distr(np.concatenate(preds, axis=0))
+        np.save(os.path.join(save_dir,'pred_distribution_epoch%s.npy'%epoch), [bins,np.append(hist,0)])
+        del preds 
+        gc.collect()
+            
+        if save_model:
+            tb.add_scalar('TrainLoss', loss_aver, epoch)
         ######################
         # validate the model #
         ######################
@@ -218,8 +238,9 @@ def train(STAMP, args, a, b, c):
                     'validloss': '{:.6f}'.format(loss_aver),
                     'epoch': '{:02d}'.format(epoch)
                 })
-
-        tb.add_scalar('ValidLoss', loss_aver, epoch)
+        
+        if save_model:
+            tb.add_scalar('ValidLoss', loss_aver, epoch)
         torch.cuda.empty_cache()
         # print training/validation statistics
         # calculate average loss over an epoch
@@ -247,19 +268,20 @@ def train(STAMP, args, a, b, c):
             'state_dict': net.state_dict(),
             'optimizer': optimizer.state_dict()
         }
+        
         early_stopping(valid_loss.item(), model_dict, epoch, save_dir)
         
-        pickle.dump(early_stopping, open(os.path.join(save_dir,"early_stopping.p"),"wb"))
-        pickle.dump(avg_train_losses, open(os.path.join(save_dir,"avg_train_losses.p"),"wb"))
-        pickle.dump(avg_valid_losses, open(os.path.join(save_dir,"avg_valid_losses.p"),"wb"))
+        if save_model: 
+            pickle.dump(early_stopping, open(os.path.join(save_dir,"early_stopping.p"),"wb"))
+            pickle.dump(avg_train_losses, open(os.path.join(save_dir,"avg_train_losses.p"),"wb"))
+            pickle.dump(avg_valid_losses, open(os.path.join(save_dir,"avg_valid_losses.p"),"wb"))
         
         if early_stopping.early_stop:
             print("Early stopping")
             break
             
-    del trainLoader, validLoader, net
     gc.collect()
-    return 
+    return min(avg_valid_losses)
 
 
 if __name__ == "__main__":
@@ -268,25 +290,75 @@ if __name__ == "__main__":
     args.epochs = 100 
     args.batch_size = 16
     args.hpa = 1000
-        
-#     for loss_name, num_layers in [['wmae',5],['wmse',5],['sera',5],['mse',5],['mae',4]]:
-#         gc.collect()
-#         args.loss = loss_name
-#         args.num_layers = num_layers
-
-#         model_name = '%s_%s_%s_40years'%(args.loss, args.num_layers, args.hpa)
-#         train(model_name, args, a=0.95, b=1.0, c=args.begin_testset)
-        
-        #for 4-fold cross-validation... 
-        #train(model_name+'/cv0', args, a=0.75, b=1.0, c=args.begin_testset)
-        #train(model_name+'/cv1', args, a=0.50, b=0.75, c=args.begin_testset) 
-        #train(model_name+'/cv2', args, a=0.25, b=0.50, c=args.begin_testset)
-        #train(model_name+'/cv3', args, a=0, b=0.25, c=args.begin_testset)
-
-
-
-
     
+    #'wmae_i','wmse_i','wmae_l','wmse_l',,'mae','mse', 'sera_p90','sera_p75','sera_p50'
+    
+#     for i, loss_name in enumerate([]):
+#         gc.collect()
+#         if loss_name=='wmae_i': 
+#             args.loss='wmae'
+#             args.weighting_method='inv'
+#             args.num_layers=4
+#         if loss_name=='wmse_i': 
+#             args.loss='wmse'
+#             args.weighting_method='inv'
+#             args.num_layers=4
+#         if loss_name=='wmae_l': 
+#             args.loss='wmae'
+#             args.weighting_method='lin'
+#             args.num_layers=5
+#         if loss_name=='wmse_l': 
+#             args.loss='wmse'
+#             args.weighting_method='lin'
+#             args.num_layers=4
+#         if loss_name=='sera_p90': 
+#             args.loss='sera'
+#             args.p0=90
+#             args.num_layers=5
+#         if loss_name=='sera_p75': 
+#             args.loss='sera'
+#             args.p0=75
+#             args.num_layers=5
+#         if loss_name=='sera_p50': 
+#             args.loss='sera'
+#             args.p0=50 
+#             args.num_layers=5
+#         if loss_name=='mae':
+#             args.loss='mae'
+#             args.num_layers=5
+#         if loss_name=='mse':
+#             args.loss='mse'
+#             args.num_layers=5
+            
+#         model_name = '%s_%s'%(loss_name, args.num_layers)
+        
+#         train(model_name, args, a=0.8, b=1.0, c=args.begin_testset, save_model=True)
+        
+    
+          #for 4-fold cross-validation...
+#         for j, num_layers in enumerate([2,3,4,5]):
+#             args.num_layers = num_layers
+
+#             model_name = '%s_%s'%(loss_name, args.num_layers)
+
+#             loss1 = train(model_name+'/cv0', args, a=0.75, b=1.0, c=args.begin_testset, save_model=False)
+#             gc.collect()
+#             loss2 = train(model_name+'/cv1', args, a=0.50, b=0.75, c=args.begin_testset, save_model=False) 
+#             gc.collect()
+#             loss3 = train(model_name+'/cv2', args, a=0.25, b=0.50, c=args.begin_testset, save_model=False)
+#             gc.collect()
+#             loss4 = train(model_name+'/cv3', args, a=0, b=0.25, c=args.begin_testset, save_model=False)
+
+#             loss_means[i][j] = np.mean([loss1, loss2, loss3, loss4])
+#             loss_stds[i][j] = np.std([loss1, loss2, loss3, loss4])
+
+#             np.save(os.path.join(root, 'cv_loss_means_extra.npy'), loss_means)
+#             np.save(os.path.join(root, 'cv_loss_stds_extra.npy'), loss_stds)
+                
+args.loss = 'mae'
+args.num_layers = 5 
+model_name = 'mae_test'
+train(model_name, args, a=0.8, b=1.0, c=args.begin_testset, save_model=True)
     
     
     

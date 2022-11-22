@@ -71,22 +71,16 @@ def function_hist(a, ini, final, num):
 
 
 def chunkify(data, args, shift=12):
-    num_samples = len(data)
+    num_samples = data.shape[0]
+    num_chunks = int(data.shape[0]/shift)    
+    chunked = np.zeros((num_chunks,12,64,64))
 
-    num_input = args.frames_predict
-    num_output = args.frames_predict
-
-    end = num_samples - num_input - num_output
-
-    inputs = []
-    targets = []
-    for i in range(0, end+shift, shift):
-        #if i%(shift*1000)==0: 
-        #    print(i)
-        inputs.append(data[i : i+num_input])
-        targets.append(data[i+num_input : i+num_input+num_output]) 
-
-    return inputs, targets
+    for i in range(num_chunks):
+        if i%(shift*1000)==0: 
+            print(i)
+        chunked[i,:] = data[i*shift : i*shift + args.frames_predict]
+    
+    return chunked
 
 
 ####################################################################
@@ -96,26 +90,32 @@ def chunkify(data, args, shift=12):
     
 def predict_batchwise(dataloader, model, device):
     model.eval()
-    
+    predictions = []    
+
+    for batch in dataloader:   
+        batch_data = batch[0].to(device).unsqueeze(2)
+        pred = model(batch_data).squeeze().detach().cpu().numpy()
+        predictions.append(pred)
+         
+    predictions = np.concatenate(predictions, axis=0) 
+        
+    return predictions
+
+
+def sample_dataloader(dataloader):
     inputs = []
-    predictions = []
     targets = []
 
     for batch in dataloader:  
         inputs.append(batch[0].squeeze().numpy())
-     
-        batch_data = batch[0].to(device).unsqueeze(2)
-        pred = model(batch_data).squeeze().detach().cpu().numpy()
-        predictions.append(pred)
-        
+
         target = batch[1].detach().cpu().numpy()
         targets.append(target)
     
     inputs = np.concatenate(inputs, axis=0)
     targets = np.concatenate(targets, axis=0)
-    predictions = np.concatenate(predictions, axis=0) 
         
-    return inputs, targets, predictions
+    return inputs, targets
 
 def predict_batchwise_ensemble(dataloader, ensemble, device):
     inputs = []
@@ -162,13 +162,28 @@ def get_random_forecast(predictions, targets):
     return np.random.choice([0, 1], size=predictions.shape, p=[1-r, r])
    
     
+def get_csi(counts):
+    return counts['tp']/(counts['tp']+counts['fp']+counts['fn'])
+
+def get_hss(counts):
+    n = counts['tp']+counts['fp']+counts['fn']+counts['tn']
+    ar = (counts['tp']+counts['fp'])*(counts['tp']+counts['fn'])/n
+    dr = (counts['fp']+counts['tn'])*(counts['fn']+counts['tn'])/n
+    return (counts['tp']+counts['tn']-ar-dr)/(n-ar-dr)
+
+def get_far(counts):
+    return counts['fp']/(counts['tp']+counts['fp'])
+
+def get_pod(counts):
+    return counts['tp']/(counts['tp']+counts['fn'])
+    
 def get_bias(counts):
     hits = counts['tp']
     false_alarms = counts['fp']
     misses = counts['fn']
-    true_negs = counts['tn']    
     return (hits+false_alarms)/(hits+misses)
-    
+
+
 def get_sedi(counts): 
     hits = counts['tp']
     false_alarms = counts['fp']
@@ -297,17 +312,25 @@ def minimum_coverage(preds, targs, args, scale=(1,1), threshold=0, time_comp=Tru
                 reduced_preds[:,:,i-offset,j-offset] = Pj >= 1/s
                 reduced_targs[:,:,i-offset,j-offset] = Tj >= 1/s 
        
-    scores_scales = np.zeros(2)
+    scores_scales = np.zeros(6)
     counts = get_counts_from_binary(reduced_preds, reduced_targs)
     #counts_random = get_counts_from_binary(reduced_rands, reduced_targs)
     scores_scales[0] = get_sedi(counts)
     scores_scales[1] = get_bias(counts)
+    scores_scales[2] = get_csi(counts)
+    scores_scales[3] = get_hss(counts)
+    scores_scales[4] = get_far(counts)
+    scores_scales[5] = get_pod(counts)
     
-    scores_times = np.zeros((2,12))
+    scores_times = np.zeros((6,12))
     counts = get_counts_from_binary_per_time(reduced_preds, reduced_targs, args)
     #counts_random = get_counts_from_binary_per_time(reduced_rands, reduced_targs, args)
     scores_times[0,:] = np.array([get_sedi(counts[t]) for t in range(0, args.frames_predict)])
     scores_times[1,:] = np.array([get_bias(counts[t]) for t in range(0, args.frames_predict)])
+    scores_times[2,:] = np.array([get_csi(counts[t]) for t in range(0, args.frames_predict)])
+    scores_times[3,:] = np.array([get_hss(counts[t]) for t in range(0, args.frames_predict)])
+    scores_times[4,:] = np.array([get_far(counts[t]) for t in range(0, args.frames_predict)])
+    scores_times[5,:] = np.array([get_pod(counts[t]) for t in range(0, args.frames_predict)])
     
     return scores_scales, scores_times
    
