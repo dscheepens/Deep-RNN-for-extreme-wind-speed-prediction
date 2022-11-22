@@ -527,10 +527,10 @@ def save_animation(inputs, targets, predictions, date, vmin, vmax, save_as):
 def plot_model_comparison_times(root, save_as):
     plt.style.use('default')
 
-    model_names = [['wmae_i_4',r'WMAE$_{inv}$ (4)'],
-                   ['wmse_i_4','WMSE$_{inv}$ (4)'],
-                   ['wmae_l_5','WMAE$_{lin}$ (5)'],
-                   ['wmse_l_4','WMSE$_{lin}$ (4)'],
+    model_names = [['wmae_i_4',r'W-MAE$_{inv}$ (4)'],
+                   ['wmse_i_4','W-MSE$_{inv}$ (4)'],
+                   ['wmae_l_5','W-MAE$_{lin}$ (5)'],
+                   ['wmse_l_4','W-MSE$_{lin}$ (4)'],
                    ['sera_p90_5','SERA$_{p90}$ (5)'],
                    ['sera_p75_5','SERA$_{p75}$ (5)'],
                    ['sera_p50_5','SERA$_{p50}$ (5)'],
@@ -595,10 +595,10 @@ def plot_model_comparison_times(root, save_as):
 def plot_model_comparison_all(root, save_as):
     plt.style.use('default')
 
-    model_names = [['wmae_i_4',r'WMAE$_{inv}$ (4)'],
-                   ['wmse_i_4','WMSE$_{inv}$ (4)'],
-                   ['wmae_l_5','WMAE$_{lin}$ (5)'],
-                   ['wmse_l_4','WMSE$_{lin}$ (4)'],
+    model_names = [['wmae_i_4',r'W-MAE$_{inv}$ (4)'],
+                   ['wmse_i_4','W-MSE$_{inv}$ (4)'],
+                   ['wmae_l_5','W-MAE$_{lin}$ (5)'],
+                   ['wmse_l_4','W-MSE$_{lin}$ (4)'],
                    ['sera_p90_5','SERA$_{p90}$ (5)'],
                    ['sera_p75_5','SERA$_{p75}$ (5)'],
                    ['sera_p50_5','SERA$_{p50}$ (5)'],
@@ -695,10 +695,10 @@ def plot_model_comparison_all(root, save_as):
 def plot_model_comparison_scales(root, save_as):
     plt.style.use('seaborn')
 
-    model_names = [['wmae_i_4',r'WMAE$_{inv}$ (4)'],
-                   ['wmse_i_4','WMSE$_{inv}$ (4)'],
-                   ['wmae_l_5','WMAE$_{lin}$ (5)'],
-                   ['wmse_l_4','WMSE$_{lin}$ (4)'],
+    model_names = [['wmae_i_4',r'W-MAE$_{inv}$ (4)'],
+                   ['wmse_i_4','W-MSE$_{inv}$ (4)'],
+                   ['wmae_l_5','W-MAE$_{lin}$ (5)'],
+                   ['wmse_l_4','W-MSE$_{lin}$ (4)'],
                    ['sera_p90_5','SERA$_{p90}$ (5)'],
                    ['sera_p75_5','SERA$_{p75}$ (5)'],
                    ['sera_p50_5','SERA$_{p50}$ (5)'],
@@ -833,7 +833,7 @@ def forecasts_augmented(net, inputs, targets, device):
 def plot_score_over_leadtime(root, save_as): 
     plt.style.use('default')
     
-    labels = [[r'WMAE$_{inv}$',r'WMSE$_{inv}$'], [r'WMAE$_{lin}$',r'WMSE$_{lin}$'], [r'SERA$_{p90}$',r'SERA$_{p75}$',r'SERA$_{p50}$'], ['MAE','MSE']]
+    labels = [[r'W-MAE$_{inv}$',r'W-MSE$_{inv}$'], [r'W-MAE$_{lin}$',r'W-MSE$_{lin}$'], [r'SERA$_{p90}$',r'SERA$_{p75}$',r'SERA$_{p50}$'], ['MAE','MSE']]
     
     titles = ['Inversely weighted','Linearly weighted','SERA','Standard']
     
@@ -845,8 +845,8 @@ def plot_score_over_leadtime(root, save_as):
     big_axes.get_yaxis().set_ticks([])
     big_axes.get_xaxis().set_ticklabels([])
     big_axes.get_yaxis().set_ticklabels([])
-    big_axes.set_xlabel('Input frame T [h]', fontsize=14, labelpad=30)
-    big_axes.set_ylabel('RMSE skill score [%]', fontsize=14, labelpad=30)
+    big_axes.set_xlabel(r'Input frame T [h]', fontsize=14, labelpad=30)
+    big_axes.set_ylabel(r'RMSE skill score $S$ [%]', fontsize=14, labelpad=30)
     
     for i, losses in enumerate([['wmae_i','wmse_i'],['wmae_l','wmse_l'],['sera_p90','sera_p75','sera_p50'],['mae','mse']]):
         
@@ -897,7 +897,7 @@ def plot_distributions(root, save_as):
     
     plt.style.use('default')
     
-    labels = [[r'WMAE$_{inv}$',r'WMSE$_{inv}$'], [r'WMAE$_{lin}$',r'WMSE$_{lin}$'], [r'SERA$_{p90}$',r'SERA$_{p75}$',r'SERA$_{p50}$'], ['MAE','MSE']]
+    labels = [[r'W-MAE$_{inv}$',r'W-MSE$_{inv}$'], [r'W-MAE$_{lin}$',r'W-MSE$_{lin}$'], [r'SERA$_{p90}$',r'SERA$_{p75}$',r'SERA$_{p50}$'], ['MAE','MSE']]
     
     titles = ['Inversely weighted','Linearly weighted','SERA','Standard']
     
