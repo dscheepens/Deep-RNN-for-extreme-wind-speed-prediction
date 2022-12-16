@@ -13,7 +13,7 @@ All scores were computed with `save_scores.py` and have been saved in `\saved_sc
 
 Clone repository: 
 
-```python
+```
 git clone https://github.com/dscheepens/Deep-RNN-for-extreme-wind-speed-prediction.git 
 ```
 
