@@ -38,4 +38,14 @@ The first row from the top displays the 12 input frames, the second row the succ
 ## Citation 
 
 ```python
+@Article{egusphere-2022-599,
+AUTHOR = {Scheepens, D. R. and Schicker, I. and Hlav\'a\v{c}kov\'a-Schindler, K. and Plant, C.},
+TITLE = {An adapted deep convolutional RNN model for spatio-temporal prediction of wind speed extremes in the short-to-medium range for wind energy applications},
+JOURNAL = {EGUsphere},
+VOLUME = {2022},
+YEAR = {2022},
+PAGES = {1--28},
+URL = {https://egusphere.copernicus.org/preprints/egusphere-2022-599/},
+DOI = {10.5194/egusphere-2022-599}
+}
 ```
