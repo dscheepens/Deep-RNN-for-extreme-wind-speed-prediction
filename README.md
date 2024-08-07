@@ -1,5 +1,5 @@
 # Deep-RNN-for-extreme-wind-speed-prediction
-Paper code for "An adapted convolutional RNN model for spatio-temporal prediction of wind speed extremes in the short-to-medium range for wind energy applications"
+Paper code for "Adapting a deep convolutional RNN model with imbalanced regression loss for improved spatio-temporal forecasting of extreme wind speed events in the short to medium range"
 
 Model and training code can be found in `\ConvLSTM_PyTorch_master`. 
 
