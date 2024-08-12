@@ -290,49 +290,47 @@ if __name__ == "__main__":
     args.epochs = 100 
     args.batch_size = 16
     args.hpa = 1000
-    
-    #'wmae_i','wmse_i','wmae_l','wmse_l',,'mae','mse', 'sera_p90','sera_p75','sera_p50'
-    
-#     for i, loss_name in enumerate([]):
-#         gc.collect()
-#         if loss_name=='wmae_i': 
-#             args.loss='wmae'
-#             args.weighting_method='inv'
-#             args.num_layers=4
-#         if loss_name=='wmse_i': 
-#             args.loss='wmse'
-#             args.weighting_method='inv'
-#             args.num_layers=4
-#         if loss_name=='wmae_l': 
-#             args.loss='wmae'
-#             args.weighting_method='lin'
-#             args.num_layers=5
-#         if loss_name=='wmse_l': 
-#             args.loss='wmse'
-#             args.weighting_method='lin'
-#             args.num_layers=4
-#         if loss_name=='sera_p90': 
-#             args.loss='sera'
-#             args.p0=90
-#             args.num_layers=5
-#         if loss_name=='sera_p75': 
-#             args.loss='sera'
-#             args.p0=75
-#             args.num_layers=5
-#         if loss_name=='sera_p50': 
-#             args.loss='sera'
-#             args.p0=50 
-#             args.num_layers=5
-#         if loss_name=='mae':
-#             args.loss='mae'
-#             args.num_layers=5
-#         if loss_name=='mse':
-#             args.loss='mse'
-#             args.num_layers=5
+
+    # to train all models (with pre-selected i.e. optimal number of layers): 
+    for i, loss_name in enumerate(['wmae_i','wmse_i','wmae_l','wmse_l',,'mae','mse', 'sera_p90','sera_p75','sera_p50']):
+        gc.collect()
+        if loss_name=='wmae_i': 
+            args.loss='wmae'
+            args.weighting_method='inv'
+            args.num_layers=4
+        if loss_name=='wmse_i': 
+            args.loss='wmse'
+            args.weighting_method='inv'
+            args.num_layers=4
+        if loss_name=='wmae_l': 
+            args.loss='wmae'
+            args.weighting_method='lin'
+            args.num_layers=5
+        if loss_name=='wmse_l': 
+            args.loss='wmse'
+            args.weighting_method='lin'
+            args.num_layers=4
+        if loss_name=='sera_p90': 
+            args.loss='sera'
+            args.p0=90
+            args.num_layers=5
+        if loss_name=='sera_p75': 
+            args.loss='sera'
+            args.p0=75
+            args.num_layers=5
+        if loss_name=='sera_p50': 
+            args.loss='sera'
+            args.p0=50 
+            args.num_layers=5
+        if loss_name=='mae':
+            args.loss='mae'
+            args.num_layers=5
+        if loss_name=='mse':
+            args.loss='mse'
+            args.num_layers=5
             
-#         model_name = '%s_%s'%(loss_name, args.num_layers)
-        
-#         train(model_name, args, a=0.8, b=1.0, c=args.begin_testset, save_model=True)
+        model_name = '%s_%s'%(loss_name, args.num_layers) 
+        train(model_name, args, a=0.8, b=1.0, c=args.begin_testset, save_model=True)
         
     
           #for 4-fold cross-validation...
@@ -354,11 +352,9 @@ if __name__ == "__main__":
 
 #             np.save(os.path.join(root, 'cv_loss_means_extra.npy'), loss_means)
 #             np.save(os.path.join(root, 'cv_loss_stds_extra.npy'), loss_stds)
-                
-args.loss = 'mae'
-args.num_layers = 5 
-model_name = 'mae_test'
-train(model_name, args, a=0.8, b=1.0, c=args.begin_testset, save_model=True)
-    
-    
-    
+
+# single example run: 
+# args.loss = 'mae'
+# args.num_layers = 5 
+# model_name = 'mae_test'
+# train(model_name, args, a=0.8, b=1.0, c=args.begin_testset, save_model=True)
