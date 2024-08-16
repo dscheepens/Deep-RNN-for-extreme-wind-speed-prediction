@@ -142,7 +142,7 @@ def save_all_scores(root, args, model_name, persist=False):
     print('getting predictions...')
     if persist: 
         print('persistence...')
-        train_inputs, train_targs = utils.predict_batchwise_persistence(train_loader, net, device)
+        train_inputs, train_targs = utils.sample_dataloader(train_loader)
         train_preds = utils.get_persistence_forecast(train_inputs)
         del train_inputs
     else: 
@@ -156,7 +156,7 @@ def save_all_scores(root, args, model_name, persist=False):
     test_loader = load_era5(root=os.path.join(root,'data/'), args=args, a=None, b=None, c=args.begin_testset, training=False)
     if persist: 
         print('persistence...')
-        inputs, targs = utils.predict_batchwise_persistence(test_loader, net, device)
+        inputs, targs = utils.sample_dataloader(test_loader)
         preds = utils.get_persistence_forecast(inputs)
         del inputs
     else:
