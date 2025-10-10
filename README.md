@@ -1,15 +1,15 @@
 # Deep-RNN-for-extreme-wind-speed-prediction
 Paper code for "Adapting a deep convolutional RNN model with imbalanced regression loss for improved spatio-temporal forecasting of extreme wind speed events in the short to medium range"
 
-Model and training code can be found in `\ConvLSTM_PyTorch_master`. 
+Model and training code can be found in `/ConvLSTM_PyTorch_master`. 
 
-Example model forecasts can be found in `\example_forecasts`.
+Example model forecasts can be found in `/example_forecasts`.
 
-All graphs used in the paper can be found in `\plots`
+All graphs used in the paper can be found in `/plots`
 
-All figures can be reconstructed in `visualisation_notebook.ipynb`, except for the forecast visualisations, which require that the models in question have been trained and saved using `\ConvLSTM_PyTorch_master/main.py`.   
+All figures can be reconstructed in `visualisation_notebook.ipynb`, except for the forecast visualisations, which require that the models in question have been trained and saved using `/ConvLSTM_PyTorch_master/main.py`.   
 
-All scores were computed with `save_scores.py` and have been saved in `\saved_scores_final`. 
+All scores were computed with `save_scores.py` and have been saved in `/saved_scores_final`. 
 
 Clone repository: 
 
